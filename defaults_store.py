@@ -54,8 +54,7 @@ def default_preset_template() -> dict[str, Any]:
         "pixels_per_10m": 150.0,
         "booth_capacity": 2,
         "booth_service_steps": 1,
-        "attractor_capacity": 2,
-        "max_queue_wait_steps": 20,
+        "booth_max_queue_wait_steps": 20,
         "main_loyal_multiplier": 1.7,
         "explorer_novelty_bias": 0.1,
         "heatmap_defaults": {

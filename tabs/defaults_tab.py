@@ -41,8 +41,7 @@ INT_FIELDS = [
     ("memory_window_steps", 1, 100),
     ("booth_capacity", 1, 20),
     ("booth_service_steps", 1, 30),
-    ("attractor_capacity", 1, 20),
-    ("max_queue_wait_steps", 0, 200),
+    ("booth_max_queue_wait_steps", 0, 200),
 ]
 
 
@@ -88,8 +87,7 @@ HELP_TEXT: dict[str, str] = {
     "pixels_per_10m": "Scale calibration from your image. Higher means more pixels represent 10 meters, so each edge is physically longer in sim terms.",
     "booth_capacity": "Concurrent service slots at booth nodes. Higher = shorter queues.",
     "booth_service_steps": "How long booth service takes. Higher = longer waits at booths.",
-    "attractor_capacity": "Concurrent service slots at attractors. Higher = shorter attractor queues.",
-    "max_queue_wait_steps": "Max tolerated wait before abandoning queue behavior.",
+    "booth_max_queue_wait_steps": "Max tolerated booth queue wait before abandoning queue behavior.",
     "main_loyal_multiplier": "How much main-loyal attendees prefer edges flagged as main.",
     "explorer_novelty_bias": "Reserved explorer-specific novelty weight for future expansion.",
     "intensity": "Heatmap color intensity/opacity. Low = subtle; high = stronger overlay.",

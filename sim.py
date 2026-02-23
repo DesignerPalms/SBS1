@@ -314,9 +314,9 @@ def run_simulation(
                 # queue/service at booth/attractor nodes
                 if cur in attractor_map:
                     attr = attractor_map[cur]
-                    cap = max(1, int(cfg.get("attractor_capacity", 2)))
+                    cap = max(1, int(attr.get("capacity", 2)))
                     svc = max(1, int(attr.get("dwell_steps", 3)))
-                    max_wait = max(0, int(cfg.get("max_queue_wait_steps", 20)))
+                    max_wait = max(0, int(attr.get("max_wait_steps", 20)))
                     service_start, wait = _service_node(cur, now, service_state, cap, svc, max_wait)
                     if wait > 0:
                         queue_wait_totals[cur] += wait * group
@@ -336,7 +336,7 @@ def run_simulation(
                 if cur in booth_nodes:
                     cap = max(1, int(cfg.get("booth_capacity", 2)))
                     svc = max(1, int(cfg.get("booth_service_steps", 1)))
-                    max_wait = max(0, int(cfg.get("max_queue_wait_steps", 20)))
+                    max_wait = max(0, int(cfg.get("booth_max_queue_wait_steps", 20)))
                     service_start, wait = _service_node(cur, now, service_state, cap, svc, max_wait)
                     if wait > 0:
                         queue_wait_totals[cur] += wait * group
