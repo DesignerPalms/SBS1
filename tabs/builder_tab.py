@@ -229,8 +229,15 @@ def _render_selected_node_editor(layout: dict[str, Any]) -> None:
         return
 
     st.write(f"Editing node **{node_id}**")
-    node["x"] = int(st.number_input("Node X", min_value=0, value=int(node["x"]), key="builder_selected_x"))
-    node["y"] = int(st.number_input("Node Y", min_value=0, value=int(node["y"]), key="builder_selected_y"))
+
+    # Ensure coordinate inputs are re-seeded when selection changes.
+    if st.session_state.get("builder_selected_editor_node") != node_id:
+        st.session_state.builder_selected_editor_node = node_id
+        st.session_state.builder_selected_x = int(node["x"])
+        st.session_state.builder_selected_y = int(node["y"])
+
+    node["x"] = int(st.number_input("Node X", min_value=0, value=int(st.session_state.get("builder_selected_x", node["x"])), key="builder_selected_x"))
+    node["y"] = int(st.number_input("Node Y", min_value=0, value=int(st.session_state.get("builder_selected_y", node["y"])), key="builder_selected_y"))
 
     existing_booth = next((b for b in layout["booths"] if b["node_id"] == node_id), None)
     existing_entrance = next((e for e in layout["entrances"] if e["node_id"] == node_id), None)
@@ -317,7 +324,7 @@ def render() -> None:
             (IMAGE_DIR / old).unlink()
         layout["image"] = {"filename": None}
 
-    col_a, col_b = st.columns(2)
+    col_a, col_b, col_c = st.columns(3)
     with col_a:
         if st.button("Delete layout", key="builder_delete_layout_btn") and st.session_state.get("builder_layout_id"):
             delete_layout(st.session_state.builder_layout_id)
@@ -329,6 +336,16 @@ def render() -> None:
             lid = save_layout(layout, st.session_state.get("builder_layout_id"))
             st.session_state.builder_layout_id = lid
             st.success(f"Saved as {lid}")
+    with col_c:
+        if st.button("Clear all nodes & paths", key="builder_clear_all_graph_btn"):
+            layout["nodes"] = []
+            layout["edges"] = []
+            layout["booths"] = []
+            layout["entrances"] = []
+            layout["attractors"] = []
+            st.session_state.builder_selected_node = None
+            st.session_state.builder_connect_first_node = None
+            st.info("Cleared all nodes, paths, and node-linked entities.")
 
     preview = _draw_preview(layout)
     st.image(preview, caption="Preview")
