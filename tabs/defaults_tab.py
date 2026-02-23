@@ -8,6 +8,7 @@ from defaults_store import default_preset_template, delete_preset, list_presets,
 FLOAT_FIELDS = [
     ("peak_hours", 0.0, 24.0, 0.1),
     ("peak_pct", 0.0, 1.0, 0.01),
+    ("minutes_deviation", 0.0, 120.0, 1.0),
     ("turnback_rate", 0.0, 1.0, 0.01),
     ("congestion_alpha", 0.0, 10.0, 0.01),
     ("goal_bias", 0.1, 10.0, 0.1),

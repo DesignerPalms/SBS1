@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import random
 from collections import defaultdict
 from dataclasses import dataclass
@@ -93,6 +92,35 @@ def _choose_next_neighbor(
     return rng.choices(neighbors, weights=scores, k=1)[0]
 
 
+
+
+def _sample_wander_steps(rng: random.Random, avg_minutes: float, steps_per_min: int, deviation_minutes: float) -> int:
+    dev = max(0.0, float(deviation_minutes))
+    if dev <= 0.0:
+        minutes = max(1.0, float(avg_minutes))
+    else:
+        # bell-curve variation: +/-dev bounds, with extremes unlikely
+        sigma = max(0.1, dev / 3.0)
+        delta = rng.gauss(0.0, sigma)
+        delta = max(-dev, min(dev, delta))
+        minutes = max(1.0, float(avg_minutes) + delta)
+    return max(1, int(round(minutes * steps_per_min)))
+
+
+def _closest_entrance(g: nx.Graph, current: int, entrances: list[dict[str, Any]]) -> int:
+    entrance_nodes = [e["node_id"] for e in entrances]
+    best = entrance_nodes[0]
+    best_dist = float("inf")
+    for n in entrance_nodes:
+        try:
+            d = nx.shortest_path_length(g, current, n)
+            if d < best_dist:
+                best_dist = d
+                best = n
+        except nx.NetworkXNoPath:
+            continue
+    return best
+
 def _mission_target(rng: random.Random, attractors: list[dict[str, Any]], booths: list[dict[str, Any]]) -> int | None:
     if attractors:
         weights = [max(0.01, float(a.get("strength", 1.0))) for a in attractors]
@@ -142,7 +170,6 @@ def run_simulation(
     arrivals_per_hour = segment.attendance / seg_hours
     avg_hours_on_floor = max(0.01, segment.avg_minutes_on_floor / 60.0)
     concurrent_people = max(1, round(arrivals_per_hour * avg_hours_on_floor))
-    wander_steps = max(1, int(segment.avg_minutes_on_floor * steps_per_min))
 
     booth_nodes = {b["node_id"]: b.get("label", f"booth-{b['node_id']}") for b in booths}
     booth_scores_per_sim: dict[int, list[float]] = defaultdict(list)
@@ -182,6 +209,13 @@ def run_simulation(
                 except nx.NetworkXNoPath:
                     pass
 
+            wander_steps = _sample_wander_steps(
+                rng,
+                segment.avg_minutes_on_floor,
+                steps_per_min,
+                float(cfg.get("minutes_deviation", 30.0)),
+            )
+
             for _ in range(wander_steps):
                 # dwell behavior
                 hit_attractor = next((a for a in attractors if a["node_id"] == cur), None)
@@ -206,7 +240,7 @@ def run_simulation(
                 prev, cur = cur, next_node
                 path.append(cur)
 
-            exit_target = _weighted_entrance_choice(rng, entrances)
+            exit_target = _closest_entrance(g, cur, entrances)
             try:
                 exit_path = nx.shortest_path(g, cur, exit_target)
                 path.extend(exit_path[1:])

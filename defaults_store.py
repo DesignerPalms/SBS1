@@ -26,6 +26,7 @@ def default_preset_template() -> dict[str, Any]:
         "seed": 42,
         "peak_hours": 4.0,
         "peak_pct": 0.6,
+        "minutes_deviation": 30.0,
         "turnback_rate": 0.3,
         "congestion_alpha": 0.1,
         "goal_bias": 2.0,

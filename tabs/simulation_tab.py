@@ -58,6 +58,7 @@ def render() -> None:
 
     cfg["peak_hours"] = float(st.number_input("peak_hours", min_value=0.0, max_value=total_show_hours, value=float(cfg["peak_hours"]), step=0.1, key="sim_peak_hours"))
     cfg["peak_pct"] = float(st.slider("peak_pct", 0.0, 1.0, float(cfg["peak_pct"]), 0.01, key="sim_peak_pct"))
+    cfg["minutes_deviation"] = float(st.number_input("minutes_deviation (+/- minutes, bell curve)", min_value=0.0, max_value=180.0, value=float(cfg.get("minutes_deviation", 30.0)), step=1.0, key="sim_minutes_deviation"))
 
     if st.button("Run dual simulation", key="sim_run_btn"):
         peak_att = int(round(total_attendance * cfg["peak_pct"]))
