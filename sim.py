@@ -294,6 +294,9 @@ def run_simulation(
 
     queue_wait_totals: dict[int, float] = defaultdict(float)
     queue_wait_counts: dict[int, int] = defaultdict(int)
+    event_pull_trigger_totals: dict[int, float] = defaultdict(float)
+    event_pull_assign_totals: dict[int, float] = defaultdict(float)
+    attractor_dwell_totals: dict[int, float] = defaultdict(float)
 
     for s in range(sims):
         rng = random.Random(int(cfg["seed"]) + s)
@@ -352,9 +355,12 @@ def run_simulation(
 
             while traveled < distance_budget:
                 active_main_event_node = _active_main_event_node(attractors, now, cfg, steps_per_min, rng)
+                if active_main_event_node is not None:
+                    event_pull_trigger_totals[active_main_event_node] += group
                 if active_main_event_node is not None and rng.random() < float(cfg.get("main_event_pull_chance", 0.35)):
                     # temporary event goal for this decision step when event is active
                     step_goal_node = active_main_event_node
+                    event_pull_assign_totals[active_main_event_node] += group
                 else:
                     step_goal_node = goal_node
                 # queue/service at booth/attractor nodes
@@ -374,6 +380,7 @@ def run_simulation(
                     for _ in range(svc):
                         path.append(cur)
                         node_visits[cur] += group
+                        attractor_dwell_totals[cur] += group
                         now += 1
                         if len(path) > 2:
                             approach = _edge_key(path[-3], path[-2])
@@ -459,10 +466,27 @@ def run_simulation(
     edge_mean = {f"{a}-{b}": v / sims for (a, b), v in edge_sums.items()}
     queue_wait_mean = {str(k): (queue_wait_totals[k] / max(1, queue_wait_counts[k])) / sims for k in queue_wait_totals.keys()}
 
+    attractor_debug = {}
+    for a in attractors:
+        nid = int(a["node_id"])
+        key = str(nid)
+        triggers = float(event_pull_trigger_totals.get(nid, 0.0)) / sims
+        pulls = float(event_pull_assign_totals.get(nid, 0.0)) / sims
+        dwell = float(attractor_dwell_totals.get(nid, 0.0)) / sims
+        attractor_debug[key] = {
+            "label": a.get("label", f"Attractor {nid}"),
+            "is_main_event": bool(a.get("is_main_event", False)),
+            "event_active_checks_mean": triggers,
+            "event_pull_assignments_mean": pulls,
+            "event_pull_conversion": (pulls / triggers) if triggers > 0 else 0.0,
+            "dwell_people_steps_mean": dwell,
+        }
+
     return {
         "booth_summary": booth_summary,
         "node_visit_mean": node_mean,
         "edge_visit_mean": edge_mean,
         "queue_wait_mean": queue_wait_mean,
+        "attractor_debug": attractor_debug,
         "concurrent_people": concurrent_people,
     }
