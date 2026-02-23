@@ -111,9 +111,15 @@ def _sample_wander_minutes(rng: random.Random, avg_minutes: float, deviation_min
 
 
 def _sample_walk_speed(rng: random.Random, cfg: dict[str, Any]) -> float:
-    mean = max(1.0, float(cfg.get("walk_speed_mean", 110.0)))
-    std = max(0.1, float(cfg.get("walk_speed_std", 20.0)))
-    return max(10.0, rng.gauss(mean, std))
+    # User calibrates image scale via pixels_per_10m; walking speed in m/min is modeled internally.
+    px_per_10m = max(1.0, float(cfg.get("pixels_per_10m", 150.0)))
+    px_per_m = px_per_10m / 10.0
+
+    human_mean_m_per_min = max(20.0, float(cfg.get("human_walk_mean_m_per_min", 80.0)))
+    human_std_m_per_min = max(1.0, float(cfg.get("human_walk_std_m_per_min", 12.0)))
+    sampled_m_per_min = max(20.0, rng.gauss(human_mean_m_per_min, human_std_m_per_min))
+
+    return sampled_m_per_min * px_per_m
 
 
 def _arrival_weights(total_steps: int, cfg: dict[str, Any]) -> list[float]:

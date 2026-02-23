@@ -66,8 +66,7 @@ def render() -> None:
         cfg["event_start_min"] = float(st.number_input("event_start_min", min_value=0.0, value=float(cfg.get("event_start_min", 120.0)), step=1.0, key="sim_event_start_min"))
         cfg["event_duration_min"] = float(st.number_input("event_duration_min", min_value=0.0, value=float(cfg.get("event_duration_min", 30.0)), step=1.0, key="sim_event_duration_min"))
         cfg["event_multiplier"] = float(st.number_input("event_multiplier", min_value=1.0, value=float(cfg.get("event_multiplier", 1.2)), step=0.1, key="sim_event_multiplier"))
-        cfg["walk_speed_mean"] = float(st.number_input("walk_speed_mean", min_value=10.0, value=float(cfg.get("walk_speed_mean", 110.0)), step=1.0, key="sim_walk_speed_mean"))
-        cfg["walk_speed_std"] = float(st.number_input("walk_speed_std", min_value=0.1, value=float(cfg.get("walk_speed_std", 20.0)), step=0.1, key="sim_walk_speed_std"))
+        cfg["pixels_per_10m"] = float(st.number_input("pixels_per_10m", min_value=10.0, max_value=3000.0, value=float(cfg.get("pixels_per_10m", 150.0)), step=1.0, key="sim_pixels_per_10m"))
 
     if st.button("Run dual simulation", key="sim_run_btn"):
         peak_att = int(round(total_attendance * cfg["peak_pct"]))
