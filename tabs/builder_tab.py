@@ -56,6 +56,35 @@ def _draw_preview(layout: dict[str, Any]) -> Image.Image:
     return img
 
 
+def _draw_scale_key(img: Image.Image) -> Image.Image:
+    draw = ImageDraw.Draw(img)
+    px_len = int(st.session_state.get("builder_scale_px", 120))
+    dist_val = float(st.session_state.get("builder_scale_distance", 10.0))
+    dist_unit = st.session_state.get("builder_scale_unit", "m")
+    walk_speed = float(st.session_state.get("builder_scale_walk_speed", 80.0))
+
+    px_len = max(20, min(px_len, img.width - 80))
+    x1 = 30
+    y1 = max(30, img.height - 30)
+    x2 = x1 + px_len
+
+    draw.line((x1, y1, x2, y1), fill="#111", width=4)
+    draw.line((x1, y1 - 8, x1, y1 + 8), fill="#111", width=3)
+    draw.line((x2, y1 - 8, x2, y1 + 8), fill="#111", width=3)
+
+    label = f"{dist_val:g} {dist_unit}"
+    sec = None
+    if walk_speed > 0:
+        minutes = dist_val / walk_speed
+        sec = int(round(minutes * 60))
+    if sec is not None:
+        label += f" (~{sec}s walk @ {walk_speed:g} {dist_unit}/min)"
+
+    draw.rectangle((x1 - 4, y1 - 28, min(img.width - 5, x1 + 8 + len(label) * 7), y1 - 8), fill=(255, 255, 255))
+    draw.text((x1, y1 - 26), label, fill="#111")
+    return img
+
+
 def _nearest_node_id(layout: dict[str, Any], x: int, y: int, radius: int = 20) -> int | None:
     best_id = None
     best_d2 = radius * radius
@@ -429,9 +458,20 @@ def render() -> None:
             st.rerun()
 
     preview = _draw_preview(layout)
+    preview = _draw_scale_key(preview)
     st.image(preview, caption="Preview")
 
     st.markdown("### Graph editor")
+    sk1, sk2, sk3, sk4 = st.columns(4)
+    with sk1:
+        st.number_input("Scale key pixels", min_value=20, max_value=2000, value=int(st.session_state.get("builder_scale_px", 120)), step=5, key="builder_scale_px")
+    with sk2:
+        st.number_input("Scale key distance", min_value=0.1, max_value=10000.0, value=float(st.session_state.get("builder_scale_distance", 10.0)), step=0.5, key="builder_scale_distance")
+    with sk3:
+        st.text_input("Scale unit", value=st.session_state.get("builder_scale_unit", "m"), key="builder_scale_unit")
+    with sk4:
+        st.number_input("Walk speed for estimate (unit/min)", min_value=1.0, max_value=10000.0, value=float(st.session_state.get("builder_scale_walk_speed", 80.0)), step=1.0, key="builder_scale_walk_speed")
+
     click_mode = st.radio(
         "Click mode",
         ["Manual add node", "Auto add node", "Connect nodes", "Paint main paths", "Intersections", "Select node"],
