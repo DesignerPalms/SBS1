@@ -69,6 +69,40 @@ def _nearest_node_id(layout: dict[str, Any], x: int, y: int, radius: int = 20) -
     return best_id
 
 
+def _distance2_point_to_segment(px: int, py: int, ax: int, ay: int, bx: int, by: int) -> float:
+    abx = bx - ax
+    aby = by - ay
+    apx = px - ax
+    apy = py - ay
+    ab2 = abx * abx + aby * aby
+    if ab2 == 0:
+        dx = px - ax
+        dy = py - ay
+        return float(dx * dx + dy * dy)
+    t = max(0.0, min(1.0, (apx * abx + apy * aby) / ab2))
+    cx = ax + t * abx
+    cy = ay + t * aby
+    dx = px - cx
+    dy = py - cy
+    return float(dx * dx + dy * dy)
+
+
+def _nearest_edge_index(layout: dict[str, Any], x: int, y: int, radius: int = 24) -> int | None:
+    nodes = {n["id"]: n for n in layout.get("nodes", [])}
+    best_idx = None
+    best_d2 = float(radius * radius)
+    for idx, e in enumerate(layout.get("edges", [])):
+        n1 = nodes.get(e["source"])
+        n2 = nodes.get(e["target"])
+        if not n1 or not n2:
+            continue
+        d2 = _distance2_point_to_segment(x, y, int(n1["x"]), int(n1["y"]), int(n2["x"]), int(n2["y"]))
+        if d2 <= best_d2:
+            best_d2 = d2
+            best_idx = idx
+    return best_idx
+
+
 def _handle_click_auto_add(layout: dict[str, Any], click: dict[str, Any] | None) -> None:
     if not click:
         return
@@ -119,6 +153,24 @@ def _handle_click_connect(layout: dict[str, Any], click: dict[str, Any] | None, 
 
     st.session_state.builder_connect_first_node = None
     return msg
+
+
+def _handle_click_paint_main(layout: dict[str, Any], click: dict[str, Any] | None) -> str | None:
+    if not click:
+        return None
+    x, y = int(click["x"]), int(click["y"])
+    click_sig = f"{x}:{y}"
+    if st.session_state.get("builder_paint_last_sig") == click_sig:
+        return None
+    st.session_state.builder_paint_last_sig = click_sig
+
+    idx = _nearest_edge_index(layout, x, y)
+    if idx is None:
+        return "No path near click. Click closer to an edge to mark it as main."
+
+    edge = layout["edges"][idx]
+    edge["is_main"] = True
+    return f"Marked edge {edge['source']}-{edge['target']} as main."
 
 
 def _handle_click_select(layout: dict[str, Any], click: dict[str, Any] | None) -> str | None:
@@ -284,7 +336,7 @@ def render() -> None:
     st.markdown("### Graph editor")
     click_mode = st.radio(
         "Click mode",
-        ["Manual add node", "Auto add node", "Connect nodes", "Select node"],
+        ["Manual add node", "Auto add node", "Connect nodes", "Paint main paths", "Select node"],
         key="builder_click_mode",
         horizontal=True,
     )
@@ -293,6 +345,8 @@ def render() -> None:
         if click_mode == "Connect nodes":
             st.session_state.builder_connect_first_node = None
             st.session_state.builder_connect_last_sig = None
+        if click_mode == "Paint main paths":
+            st.session_state.builder_paint_last_sig = None
         if click_mode == "Select node":
             st.session_state.builder_selected_node = None
             st.session_state.builder_select_last_sig = None
@@ -310,6 +364,10 @@ def render() -> None:
         if first is not None:
             st.info(f"Path mode: first node selected = {first}. Click second node.")
         msg = _handle_click_connect(layout, click, connect_main)
+        if msg:
+            st.info(msg)
+    elif click_mode == "Paint main paths":
+        msg = _handle_click_paint_main(layout, click)
         if msg:
             st.info(msg)
     elif click_mode == "Select node":
@@ -375,6 +433,14 @@ def render() -> None:
                         "dwell_steps": int(a_dwell),
                     }
                 )
+
+        edge_labels = [f"{i}: {e['source']}-{e['target']} ({'main' if e.get('is_main') else 'normal'})" for i, e in enumerate(layout.get("edges", []))]
+        if edge_labels:
+            del_edge_label = st.selectbox("Delete path", edge_labels, key="builder_delete_edge")
+            if st.button("Delete selected path", key="builder_delete_edge_btn"):
+                del_idx = int(del_edge_label.split(":", 1)[0])
+                if 0 <= del_idx < len(layout["edges"]):
+                    layout["edges"].pop(del_idx)
 
         del_node = st.selectbox("Delete node", node_ids, key="builder_delete_node")
         if st.button("Delete selected node", key="builder_delete_node_btn"):
