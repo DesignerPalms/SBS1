@@ -112,41 +112,6 @@ def render() -> None:
             )
         st.dataframe(pd.DataFrame(rows))
 
-        queue_rows = [{"node_id": k, "mean_wait_steps": v} for k, v in peak.get("queue_wait_mean", {}).items()]
-        if queue_rows:
-            st.caption("Peak queue wait (mean steps)")
-            st.dataframe(pd.DataFrame(queue_rows))
-
-        debug_peak = []
-        for nid, info in peak.get("attractor_debug", {}).items():
-            debug_peak.append({
-                "node_id": nid,
-                "label": info.get("label"),
-                "is_main_event": info.get("is_main_event"),
-                "event_active_checks_mean": info.get("event_active_checks_mean", 0.0),
-                "event_pull_assignments_mean": info.get("event_pull_assignments_mean", 0.0),
-                "event_pull_conversion": info.get("event_pull_conversion", 0.0),
-                "dwell_people_steps_mean": info.get("dwell_people_steps_mean", 0.0),
-            })
-        if debug_peak:
-            st.caption("Peak attractor debug")
-            st.dataframe(pd.DataFrame(debug_peak))
-
-        debug_off = []
-        for nid, info in off.get("attractor_debug", {}).items():
-            debug_off.append({
-                "node_id": nid,
-                "label": info.get("label"),
-                "is_main_event": info.get("is_main_event"),
-                "event_active_checks_mean": info.get("event_active_checks_mean", 0.0),
-                "event_pull_assignments_mean": info.get("event_pull_assignments_mean", 0.0),
-                "event_pull_conversion": info.get("event_pull_conversion", 0.0),
-                "dwell_people_steps_mean": info.get("dwell_people_steps_mean", 0.0),
-            })
-        if debug_off:
-            st.caption("Off-peak attractor debug")
-            st.dataframe(pd.DataFrame(debug_off))
-
         heat_mode = st.selectbox("Heatmap mode", ["rank_bins", "percentile", "value"], key="sim_heat_mode")
         bins = st.slider("rank bins", 3, 9, 5, key="sim_heat_bins") if heat_mode == "rank_bins" else 5
 
@@ -181,3 +146,44 @@ def render() -> None:
 
         st.image(peak_img, caption="Peak heatmap")
         st.image(off_img, caption="Off-peak heatmap")
+
+        queue_rows = [{"node_id": k, "mean_wait_steps": v} for k, v in peak.get("queue_wait_mean", {}).items()]
+        st.caption("Peak queue wait (mean steps)")
+        if queue_rows:
+            st.dataframe(pd.DataFrame(queue_rows))
+        else:
+            st.info("No queue-wait data for this run.")
+
+        debug_peak = []
+        for nid, info in peak.get("attractor_debug", {}).items():
+            debug_peak.append({
+                "node_id": nid,
+                "label": info.get("label"),
+                "is_main_event": info.get("is_main_event"),
+                "event_active_checks_mean": info.get("event_active_checks_mean", 0.0),
+                "event_pull_assignments_mean": info.get("event_pull_assignments_mean", 0.0),
+                "event_pull_conversion": info.get("event_pull_conversion", 0.0),
+                "dwell_people_steps_mean": info.get("dwell_people_steps_mean", 0.0),
+            })
+        st.caption("Peak attractor debug")
+        if debug_peak:
+            st.dataframe(pd.DataFrame(debug_peak))
+        else:
+            st.info("No attractor debug rows for peak segment.")
+
+        debug_off = []
+        for nid, info in off.get("attractor_debug", {}).items():
+            debug_off.append({
+                "node_id": nid,
+                "label": info.get("label"),
+                "is_main_event": info.get("is_main_event"),
+                "event_active_checks_mean": info.get("event_active_checks_mean", 0.0),
+                "event_pull_assignments_mean": info.get("event_pull_assignments_mean", 0.0),
+                "event_pull_conversion": info.get("event_pull_conversion", 0.0),
+                "dwell_people_steps_mean": info.get("dwell_people_steps_mean", 0.0),
+            })
+        st.caption("Off-peak attractor debug")
+        if debug_off:
+            st.dataframe(pd.DataFrame(debug_off))
+        else:
+            st.info("No attractor debug rows for off-peak segment.")
