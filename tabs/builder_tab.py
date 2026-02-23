@@ -103,6 +103,14 @@ def _nearest_edge_index(layout: dict[str, Any], x: int, y: int, radius: int = 24
     return best_idx
 
 
+def _reset_mode_selection_state() -> None:
+    st.session_state.builder_connect_first_node = None
+    st.session_state.builder_connect_last_sig = None
+    st.session_state.builder_paint_last_sig = None
+    st.session_state.builder_selected_node = None
+    st.session_state.builder_select_last_sig = None
+
+
 def _handle_click_auto_add(layout: dict[str, Any], click: dict[str, Any] | None) -> None:
     if not click:
         return
@@ -251,9 +259,11 @@ def _render_selected_node_editor(layout: dict[str, Any]) -> None:
         with b1:
             if st.button("Set booth", key="builder_selected_set_booth"):
                 _upsert_booth(layout, node_id, booth_label)
+                st.rerun()
         with b2:
             if st.button("Clear booth", key="builder_selected_clear_booth"):
                 layout["booths"] = [b for b in layout["booths"] if b["node_id"] != node_id]
+                st.rerun()
 
     with c2:
         st.markdown("**Entrance**")
@@ -267,9 +277,11 @@ def _render_selected_node_editor(layout: dict[str, Any]) -> None:
         with e1:
             if st.button("Set entrance", key="builder_selected_set_entrance"):
                 _upsert_entrance(layout, node_id, entrance_weight)
+                st.rerun()
         with e2:
             if st.button("Clear entrance", key="builder_selected_clear_entrance"):
                 layout["entrances"] = [e for e in layout["entrances"] if e["node_id"] != node_id]
+                st.rerun()
 
     with c3:
         st.markdown("**Attractor**")
@@ -282,9 +294,11 @@ def _render_selected_node_editor(layout: dict[str, Any]) -> None:
         with a1:
             if st.button("Set attractor", key="builder_selected_set_attractor"):
                 _upsert_attractor(layout, node_id, attr_label, attr_type, attr_strength, attr_draw_rate, int(attr_dwell))
+                st.rerun()
         with a2:
             if st.button("Clear attractor", key="builder_selected_clear_attractor"):
                 layout["attractors"] = [a for a in layout["attractors"] if a["node_id"] != node_id]
+                st.rerun()
 
 
 def render() -> None:
@@ -346,6 +360,7 @@ def render() -> None:
             st.session_state.builder_selected_node = None
             st.session_state.builder_connect_first_node = None
             st.info("Cleared all nodes, paths, and node-linked entities.")
+            st.rerun()
 
     preview = _draw_preview(layout)
     st.image(preview, caption="Preview")
@@ -359,14 +374,7 @@ def render() -> None:
     )
     prev_mode = st.session_state.get("builder_prev_click_mode")
     if prev_mode != click_mode:
-        if click_mode == "Connect nodes":
-            st.session_state.builder_connect_first_node = None
-            st.session_state.builder_connect_last_sig = None
-        if click_mode == "Paint main paths":
-            st.session_state.builder_paint_last_sig = None
-        if click_mode == "Select node":
-            st.session_state.builder_selected_node = None
-            st.session_state.builder_select_last_sig = None
+        _reset_mode_selection_state()
         st.session_state.builder_prev_click_mode = click_mode
 
     connect_main = st.checkbox("Connect mode: mark created edges as main", key="builder_connect_main")
@@ -375,18 +383,26 @@ def render() -> None:
         st.caption(f"Last click: x={int(click['x'])}, y={int(click['y'])}")
 
     if click_mode == "Auto add node":
+        before_nodes = len(layout.get("nodes", []))
         _handle_click_auto_add(layout, click)
+        if len(layout.get("nodes", [])) != before_nodes:
+            st.rerun()
     elif click_mode == "Connect nodes":
         first = st.session_state.get("builder_connect_first_node")
         if first is not None:
             st.info(f"Path mode: first node selected = {first}. Click second node.")
+        before_edges = len(layout.get("edges", []))
         msg = _handle_click_connect(layout, click, connect_main)
         if msg:
             st.info(msg)
+        if len(layout.get("edges", [])) != before_edges or (msg and "Updated main=True" in msg):
+            st.rerun()
     elif click_mode == "Paint main paths":
         msg = _handle_click_paint_main(layout, click)
         if msg:
             st.info(msg)
+            if msg.startswith("Marked edge"):
+                st.rerun()
     elif click_mode == "Select node":
         msg = _handle_click_select(layout, click)
         if msg:
@@ -397,6 +413,7 @@ def render() -> None:
         if click:
             nid = 1 + max([n["id"] for n in layout.get("nodes", [])], default=0)
             layout["nodes"].append({"id": nid, "x": int(click["x"]), "y": int(click["y"])})
+            st.rerun()
         else:
             st.warning("Click the preview image first to place a node.")
 
@@ -416,6 +433,7 @@ def render() -> None:
                 existing["is_main"] = existing.get("is_main", False) or is_main
             else:
                 layout["edges"].append({"source": s, "target": t, "is_main": bool(is_main)})
+            st.rerun()
 
         st.markdown("#### Place booth / entrance / attractor")
         bcol, ecol, acol = st.columns(3)
@@ -425,12 +443,14 @@ def render() -> None:
             if st.button("Add booth", key="builder_add_booth_btn"):
                 if not any(b["node_id"] == bn for b in layout["booths"]):
                     layout["booths"].append({"node_id": bn, "label": bl or f"Booth {bn}"})
+                    st.rerun()
         with ecol:
             en = st.selectbox("Entrance node", node_ids, key="builder_entrance_node")
             ew = st.number_input("Entrance weight", min_value=0.01, value=1.0, key="builder_entrance_weight")
             if st.button("Add entrance", key="builder_add_entrance_btn"):
                 layout["entrances"] = [e for e in layout["entrances"] if e["node_id"] != en]
                 layout["entrances"].append({"node_id": en, "weight": float(ew)})
+                st.rerun()
         with acol:
             an = st.selectbox("Attractor node", node_ids, key="builder_attr_node")
             al = st.text_input("Attractor label", key="builder_attr_label")
@@ -450,6 +470,7 @@ def render() -> None:
                         "dwell_steps": int(a_dwell),
                     }
                 )
+                st.rerun()
 
         edge_labels = [f"{i}: {e['source']}-{e['target']} ({'main' if e.get('is_main') else 'normal'})" for i, e in enumerate(layout.get("edges", []))]
         if edge_labels:
@@ -458,6 +479,7 @@ def render() -> None:
                 del_idx = int(del_edge_label.split(":", 1)[0])
                 if 0 <= del_idx < len(layout["edges"]):
                     layout["edges"].pop(del_idx)
+                    st.rerun()
 
         del_node = st.selectbox("Delete node", node_ids, key="builder_delete_node")
         if st.button("Delete selected node", key="builder_delete_node_btn"):
@@ -468,6 +490,7 @@ def render() -> None:
             layout["attractors"] = [a for a in layout["attractors"] if a["node_id"] != del_node]
             if st.session_state.get("builder_selected_node") == del_node:
                 st.session_state.builder_selected_node = None
+            st.rerun()
 
     st.markdown("### Current layout data")
     st.write("Nodes", layout.get("nodes", []))
