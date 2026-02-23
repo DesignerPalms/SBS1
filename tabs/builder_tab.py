@@ -109,6 +109,7 @@ def _reset_mode_selection_state() -> None:
     st.session_state.builder_paint_last_sig = None
     st.session_state.builder_selected_node = None
     st.session_state.builder_select_last_sig = None
+    st.session_state.builder_intersections_last_sig = None
 
 
 def _handle_click_auto_add(layout: dict[str, Any], click: dict[str, Any] | None) -> None:
@@ -179,6 +180,71 @@ def _handle_click_paint_main(layout: dict[str, Any], click: dict[str, Any] | Non
     edge = layout["edges"][idx]
     edge["is_main"] = True
     return f"Marked edge {edge['source']}-{edge['target']} as main."
+
+
+def _handle_click_intersections(layout: dict[str, Any], click: dict[str, Any] | None, tolerance: int = 18) -> tuple[str | None, int]:
+    if not click:
+        return None, 0
+
+    x, y = int(click["x"]), int(click["y"])
+    click_sig = f"{x}:{y}"
+    if st.session_state.get("builder_intersections_last_sig") == click_sig:
+        return None, 0
+    st.session_state.builder_intersections_last_sig = click_sig
+
+    center_id = _nearest_node_id(layout, x, y, radius=max(20, tolerance + 6))
+    if center_id is None:
+        return "No node near click. Click closer to a node.", 0
+
+    nodes = layout.get("nodes", [])
+    center = next((n for n in nodes if n["id"] == center_id), None)
+    if center is None:
+        return "Selected node not found.", 0
+
+    cx, cy = int(center["x"]), int(center["y"])
+    best: dict[str, tuple[int, int]] = {}
+
+    for n in nodes:
+        nid = int(n["id"])
+        if nid == center_id:
+            continue
+        nx, ny = int(n["x"]), int(n["y"])
+        dx, dy = nx - cx, ny - cy
+
+        if abs(dy) <= tolerance and dx > 0:
+            cur = best.get("right")
+            if cur is None or dx < cur[1]:
+                best["right"] = (nid, dx)
+        if abs(dy) <= tolerance and dx < 0:
+            dist = abs(dx)
+            cur = best.get("left")
+            if cur is None or dist < cur[1]:
+                best["left"] = (nid, dist)
+        if abs(dx) <= tolerance and dy > 0:
+            cur = best.get("down")
+            if cur is None or dy < cur[1]:
+                best["down"] = (nid, dy)
+        if abs(dx) <= tolerance and dy < 0:
+            dist = abs(dy)
+            cur = best.get("up")
+            if cur is None or dist < cur[1]:
+                best["up"] = (nid, dist)
+
+    added = 0
+    for dir_name in ("left", "right", "up", "down"):
+        hit = best.get(dir_name)
+        if not hit:
+            continue
+        other = hit[0]
+        pair = tuple(sorted((center_id, other)))
+        existing = next((e for e in layout["edges"] if tuple(sorted((e["source"], e["target"]))) == pair), None)
+        if existing is None:
+            layout["edges"].append({"source": pair[0], "target": pair[1], "is_main": False})
+            added += 1
+
+    if added == 0:
+        return f"Intersections: no new paths from node {center_id} (within tolerance {tolerance}px).", 0
+    return f"Intersections: added {added} path(s) from node {center_id}.", added
 
 
 def _handle_click_select(layout: dict[str, Any], click: dict[str, Any] | None) -> str | None:
@@ -368,7 +434,7 @@ def render() -> None:
     st.markdown("### Graph editor")
     click_mode = st.radio(
         "Click mode",
-        ["Manual add node", "Auto add node", "Connect nodes", "Paint main paths", "Select node"],
+        ["Manual add node", "Auto add node", "Connect nodes", "Paint main paths", "Intersections", "Select node"],
         key="builder_click_mode",
         horizontal=True,
     )
@@ -378,6 +444,15 @@ def render() -> None:
         st.session_state.builder_prev_click_mode = click_mode
 
     connect_main = st.checkbox("Connect mode: mark created edges as main", key="builder_connect_main")
+    intersections_tolerance = int(
+        st.number_input(
+            "Intersections tolerance (px)",
+            min_value=2,
+            max_value=80,
+            value=18,
+            key="builder_intersections_tolerance",
+        )
+    )
     click = streamlit_image_coordinates(preview, key="builder_image_click")
     if click:
         st.caption(f"Last click: x={int(click['x'])}, y={int(click['y'])}")
@@ -403,6 +478,12 @@ def render() -> None:
             st.info(msg)
             if msg.startswith("Marked edge"):
                 st.rerun()
+    elif click_mode == "Intersections":
+        msg, added = _handle_click_intersections(layout, click, intersections_tolerance)
+        if msg:
+            st.info(msg)
+        if added > 0:
+            st.rerun()
     elif click_mode == "Select node":
         msg = _handle_click_select(layout, click)
         if msg:
