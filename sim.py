@@ -141,6 +141,22 @@ def _arrival_weights(total_steps: int, cfg: dict[str, Any]) -> list[float]:
     return weights
 
 
+def _is_event_active(step: int, cfg: dict[str, Any], steps_per_min: int) -> bool:
+    start = int(max(0.0, float(cfg.get("event_start_min", 120.0))) * steps_per_min)
+    duration = int(max(0.0, float(cfg.get("event_duration_min", 30.0))) * steps_per_min)
+    return start <= step <= (start + duration)
+
+
+def _active_main_event_node(attractors: list[dict[str, Any]], step: int, cfg: dict[str, Any], steps_per_min: int, rng: random.Random) -> int | None:
+    if not _is_event_active(step, cfg, steps_per_min):
+        return None
+    mains = [a for a in attractors if bool(a.get("is_main_event", False))]
+    if not mains:
+        return None
+    weights = [max(0.01, float(a.get("strength", 1.0))) for a in mains]
+    return rng.choices([a["node_id"] for a in mains], weights=weights, k=1)[0]
+
+
 def _choose_next_neighbor(
     rng: random.Random,
     g: nx.Graph,
@@ -152,6 +168,7 @@ def _choose_next_neighbor(
     goal_node: int | None,
     recent_edges: deque[tuple[int, int]],
     seen_nodes: dict[int, int],
+    active_main_event_node: int | None,
 ) -> int | None:
     neighbors = list(g.neighbors(current))
     if not neighbors:
@@ -194,6 +211,15 @@ def _choose_next_neighbor(
 
         visits = seen_nodes.get(nb, 0)
         score *= 1.0 + (novelty_bonus_initial * math.exp(-novelty_decay * visits))
+
+        if active_main_event_node is not None:
+            try:
+                d_cur_event = nx.shortest_path_length(g, current, active_main_event_node, weight="length")
+                d_nb_event = nx.shortest_path_length(g, nb, active_main_event_node, weight="length")
+                if d_nb_event < d_cur_event:
+                    score *= float(cfg.get("main_event_strength_multiplier", 4.0))
+            except nx.NetworkXNoPath:
+                pass
 
         if goal_node is not None:
             try:
@@ -325,6 +351,12 @@ def run_simulation(
                     pass
 
             while traveled < distance_budget:
+                active_main_event_node = _active_main_event_node(attractors, now, cfg, steps_per_min, rng)
+                if active_main_event_node is not None and rng.random() < float(cfg.get("main_event_pull_chance", 0.35)):
+                    # temporary event goal for this decision step when event is active
+                    step_goal_node = active_main_event_node
+                else:
+                    step_goal_node = goal_node
                 # queue/service at booth/attractor nodes
                 if cur in attractor_map:
                     attr = attractor_map[cur]
@@ -357,7 +389,19 @@ def run_simulation(
                         queue_wait_counts[cur] += group
                         now = service_start
 
-                nxt = _choose_next_neighbor(rng, g, cur, prev, edge_visits, cfg, personality, goal_node, recent_edges, seen_nodes)
+                nxt = _choose_next_neighbor(
+                    rng,
+                    g,
+                    cur,
+                    prev,
+                    edge_visits,
+                    cfg,
+                    personality,
+                    step_goal_node,
+                    recent_edges,
+                    seen_nodes,
+                    active_main_event_node,
+                )
                 if nxt is None:
                     break
                 edge_len = float(g.edges[cur, nxt].get("length", 1.0))

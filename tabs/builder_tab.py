@@ -304,7 +304,7 @@ def _upsert_entrance(layout: dict[str, Any], node_id: int, weight: float) -> Non
     layout["entrances"].append({"node_id": node_id, "weight": float(weight)})
 
 
-def _upsert_attractor(layout: dict[str, Any], node_id: int, label: str, attr_type: str, strength: float, draw_rate: float, dwell_steps: int, capacity: int, max_wait_steps: int) -> None:
+def _upsert_attractor(layout: dict[str, Any], node_id: int, label: str, attr_type: str, strength: float, draw_rate: float, dwell_steps: int, capacity: int, max_wait_steps: int, is_main_event: bool) -> None:
     layout["attractors"] = [a for a in layout["attractors"] if a["node_id"] != node_id]
     layout["attractors"].append(
         {
@@ -316,6 +316,7 @@ def _upsert_attractor(layout: dict[str, Any], node_id: int, label: str, attr_typ
             "dwell_steps": int(dwell_steps),
             "capacity": int(capacity),
             "max_wait_steps": int(max_wait_steps),
+            "is_main_event": bool(is_main_event),
         }
     )
 
@@ -389,10 +390,11 @@ def _render_selected_node_editor(layout: dict[str, Any]) -> None:
         attr_dwell = st.number_input("Dwell steps", min_value=1, value=int((existing_attractor or {}).get("dwell_steps", 3)), key="builder_selected_attr_dwell")
         attr_capacity = st.number_input("Queue slots", min_value=1, value=int((existing_attractor or {}).get("capacity", 2)), key="builder_selected_attr_capacity")
         attr_max_wait = st.number_input("Max queue wait steps", min_value=0, value=int((existing_attractor or {}).get("max_wait_steps", 20)), key="builder_selected_attr_max_wait")
+        attr_is_main_event = st.checkbox("Main event / stage", value=bool((existing_attractor or {}).get("is_main_event", False)), key="builder_selected_attr_is_main_event")
         a1, a2 = st.columns(2)
         with a1:
             if st.button("Set attractor", key="builder_selected_set_attractor"):
-                _upsert_attractor(layout, node_id, attr_label, attr_type, attr_strength, attr_draw_rate, int(attr_dwell), int(attr_capacity), int(attr_max_wait))
+                _upsert_attractor(layout, node_id, attr_label, attr_type, attr_strength, attr_draw_rate, int(attr_dwell), int(attr_capacity), int(attr_max_wait), bool(attr_is_main_event))
                 st.rerun()
         with a2:
             if st.button("Clear attractor", key="builder_selected_clear_attractor"):
@@ -585,6 +587,7 @@ def render() -> None:
             a_dwell = st.number_input("Dwell steps", min_value=1, value=3, key="builder_attr_dwell")
             a_cap = st.number_input("Queue slots", min_value=1, value=2, key="builder_attr_capacity")
             a_wait = st.number_input("Max queue wait steps", min_value=0, value=20, key="builder_attr_max_wait")
+            a_main_event = st.checkbox("Main event / stage", key="builder_attr_main_event")
             if st.button("Add attractor", key="builder_add_attr_btn"):
                 layout["attractors"] = [a for a in layout["attractors"] if a["node_id"] != an]
                 layout["attractors"].append(
@@ -597,6 +600,7 @@ def render() -> None:
                         "dwell_steps": int(a_dwell),
                         "capacity": int(a_cap),
                         "max_wait_steps": int(a_wait),
+                        "is_main_event": bool(a_main_event),
                     }
                 )
                 st.rerun()

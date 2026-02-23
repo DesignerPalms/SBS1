@@ -32,6 +32,8 @@ def default_preset_template() -> dict[str, Any]:
         "event_start_min": 120.0,
         "event_duration_min": 30.0,
         "event_multiplier": 1.2,
+        "main_event_pull_chance": 0.35,
+        "main_event_strength_multiplier": 4.0,
         "turnback_rate": 0.3,
         "forward_bias": 1.0,
         "congestion_alpha": 0.1,
