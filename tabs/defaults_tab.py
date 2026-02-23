@@ -56,12 +56,74 @@ MIX_FIELDS = [
 ]
 
 
+HELP_TEXT: dict[str, str] = {
+    "sims": "How many Monte Carlo runs to average. Low = faster, noisier. High = slower, more stable.",
+    "steps_per_minute": "Simulation ticks per minute. Low = coarse movement. High = finer movement and heavier compute.",
+    "seed": "Random seed for reproducibility. Same inputs + same seed => same results.",
+    "peak_hours": "Hours considered peak. Higher shifts more simulated time into peak behavior.",
+    "peak_pct": "Fraction of attendance during peak hours. Higher concentrates demand into peak segment.",
+    "minutes_deviation": "Bell-curve spread around avg minutes on floor. Low = similar stay lengths; high = wider variation.",
+    "arrival_wave_strength": "Amplitude of cyclical arrival pulses. 0 = flat arrivals; larger = stronger waves.",
+    "arrival_wave_frequency": "How often arrival waves oscillate over a segment. Higher = more frequent surges.",
+    "event_start_min": "Minute offset when an event spike starts.",
+    "event_duration_min": "How long the event spike lasts.",
+    "event_multiplier": "Arrival multiplier during event window. 1 = no spike; larger = stronger surge.",
+    "turnback_rate": "Chance to avoid immediate backtracking. Low = more bouncing back; high = fewer instant reversals.",
+    "congestion_alpha": "Strength of congestion penalty on busy edges. Low = weak effect; high = strong avoidance.",
+    "goal_bias": "How strongly mission/goal behavior favors moves toward target nodes.",
+    "attractor_pull_chance": "Chance that attractor pull logic engages when checked.",
+    "pull_check_every_n_steps": "How often pull opportunities are evaluated.",
+    "attractor_cooldown_steps": "Cooldown after an attractor dwell before another immediate pull/dwell.",
+    "pct_wanderer": "Share of attendees behaving as wanderers.",
+    "pct_mission": "Share of attendees following mission/target-driven behavior.",
+    "pct_explorer": "Share of attendees emphasizing exploration.",
+    "pct_main": "Share of attendees preferring main paths.",
+    "couples_rate": "Legacy couple coupling control. Higher means more paired movement tendency.",
+    "group_prob_solo": "Relative probability a spawned group has size 1.",
+    "group_prob_couple": "Relative probability a spawned group has size 2.",
+    "group_prob_triple": "Relative probability a spawned group has size 3.",
+    "group_prob_quad": "Relative probability a spawned group has size 4.",
+    "group_cohesion": "How tightly grouped/coordinated grouped agents behave. Higher = more cohesive.",
+    "memory_window_steps": "Recent-edge memory length used to discourage repeating the same edges.",
+    "repeat_edge_penalty": "Penalty multiplier for recently used edges. Lower = stronger repeat avoidance.",
+    "novelty_bonus_initial": "Initial bonus for less-visited nodes. Higher = stronger exploration push.",
+    "novelty_decay_rate": "How fast novelty bonus decays with repeated visits. Higher = bonus fades faster.",
+    "walk_speed_mean": "Average movement speed used for distance budgeting. Higher = longer traversable distance.",
+    "walk_speed_std": "Speed variability. Low = uniform speeds; high = more variation.",
+    "booth_capacity": "Concurrent service slots at booth nodes. Higher = shorter queues.",
+    "booth_service_steps": "How long booth service takes. Higher = longer waits at booths.",
+    "attractor_capacity": "Concurrent service slots at attractors. Higher = shorter attractor queues.",
+    "max_queue_wait_steps": "Max tolerated wait before abandoning queue behavior.",
+    "main_loyal_multiplier": "How much main-loyal attendees prefer edges flagged as main.",
+    "explorer_novelty_bias": "Reserved explorer-specific novelty weight for future expansion.",
+    "intensity": "Heatmap color intensity/opacity. Low = subtle; high = stronger overlay.",
+    "max_w": "Max rendered edge stroke width in heatmaps.",
+}
+
+
 def _float_dual(field: str, cfg: dict, min_v: float, max_v: float, step: float) -> float:
+    help_text = HELP_TEXT.get(field)
     c1, c2 = st.columns([3, 1])
     with c1:
-        slider_v = st.slider(f"{field} slider", min_value=min_v, max_value=max_v, value=float(cfg[field]), step=step, key=f"defaults_slider_{field}")
+        slider_v = st.slider(
+            f"{field} slider",
+            min_value=min_v,
+            max_value=max_v,
+            value=float(cfg[field]),
+            step=step,
+            key=f"defaults_slider_{field}",
+            help=help_text,
+        )
     with c2:
-        box_v = st.number_input(f"{field} value", min_value=min_v, max_value=max_v, value=float(slider_v), step=step, key=f"defaults_box_{field}")
+        box_v = st.number_input(
+            f"{field} value",
+            min_value=min_v,
+            max_value=max_v,
+            value=float(slider_v),
+            step=step,
+            key=f"defaults_box_{field}",
+            help=help_text,
+        )
     return float(box_v)
 
 
@@ -89,8 +151,19 @@ def render() -> None:
 
     cfg = st.session_state.defaults_working
 
+    st.caption("Tip: hover the ⓘ icon on each control label to see what low vs high values do.")
+
     for f, low, high in INT_FIELDS:
-        cfg[f] = int(st.number_input(f, min_value=low, max_value=high, value=int(cfg[f]), key=f"defaults_int_{f}"))
+        cfg[f] = int(
+            st.number_input(
+                f,
+                min_value=low,
+                max_value=high,
+                value=int(cfg[f]),
+                key=f"defaults_int_{f}",
+                help=HELP_TEXT.get(f),
+            )
+        )
 
     for f, low, high, step in FLOAT_FIELDS:
         cfg[f] = _float_dual(f, cfg, low, high, step)
@@ -101,10 +174,10 @@ def render() -> None:
 
     st.markdown("#### Heatmap Defaults")
     h = cfg.setdefault("heatmap_defaults", {})
-    h["show_edges"] = st.checkbox("show_edges", value=bool(h.get("show_edges", True)), key="defaults_heat_show_edges")
-    h["show_nodes"] = st.checkbox("show_nodes", value=bool(h.get("show_nodes", True)), key="defaults_heat_show_nodes")
+    h["show_edges"] = st.checkbox("show_edges", value=bool(h.get("show_edges", True)), key="defaults_heat_show_edges", help="Toggle rendering of edge heat in the heatmap overlay.")
+    h["show_nodes"] = st.checkbox("show_nodes", value=bool(h.get("show_nodes", True)), key="defaults_heat_show_nodes", help="Toggle rendering of node heat in the heatmap overlay.")
     h["intensity"] = _float_dual("intensity", {"intensity": h.get("intensity", 0.9)}, 0.1, 2.0, 0.05)
-    h["max_w"] = int(st.number_input("max_w", min_value=1, max_value=30, value=int(h.get("max_w", 12)), key="defaults_heat_max_w"))
+    h["max_w"] = int(st.number_input("max_w", min_value=1, max_value=30, value=int(h.get("max_w", 12)), key="defaults_heat_max_w", help=HELP_TEXT.get("max_w")))
 
     name = st.text_input("Preset name", value=(selected if selected != "(new)" else "default"), key="defaults_name")
     if st.button("Save preset", key="defaults_save_btn"):
