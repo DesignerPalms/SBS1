@@ -167,6 +167,20 @@ def _choose_next_neighbor(
         if prev is not None and nb == prev:
             score *= max(0.01, 1.0 - float(cfg["turnback_rate"]))
 
+        # forward momentum: prefer continuing same heading
+        if prev is not None:
+            pnode = g.nodes[prev]
+            cnode = g.nodes[current]
+            nnode = g.nodes[nb]
+            vx, vy = float(cnode["x"]) - float(pnode["x"]), float(cnode["y"]) - float(pnode["y"])
+            wx, wy = float(nnode["x"]) - float(cnode["x"]), float(nnode["y"]) - float(cnode["y"])
+            vnorm = math.hypot(vx, vy)
+            wnorm = math.hypot(wx, wy)
+            if vnorm > 0 and wnorm > 0:
+                cosang = max(-1.0, min(1.0, (vx * wx + vy * wy) / (vnorm * wnorm)))
+                # map [-1,1] -> [0,1], then apply configurable strength
+                forward_component = (cosang + 1.0) / 2.0
+                score *= 1.0 + float(cfg.get("forward_bias", 1.0)) * forward_component
         edge = g.edges[current, nb]
         if personality == "main" and edge.get("is_main"):
             score *= float(cfg["main_loyal_multiplier"])

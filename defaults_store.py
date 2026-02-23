@@ -33,6 +33,7 @@ def default_preset_template() -> dict[str, Any]:
         "event_duration_min": 30.0,
         "event_multiplier": 1.2,
         "turnback_rate": 0.3,
+        "forward_bias": 1.0,
         "congestion_alpha": 0.1,
         "goal_bias": 2.0,
         "attractor_pull_chance": 0.25,

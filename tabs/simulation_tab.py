@@ -66,6 +66,7 @@ def render() -> None:
         cfg["event_start_min"] = float(st.number_input("event_start_min", min_value=0.0, value=float(cfg.get("event_start_min", 120.0)), step=1.0, key="sim_event_start_min"))
         cfg["event_duration_min"] = float(st.number_input("event_duration_min", min_value=0.0, value=float(cfg.get("event_duration_min", 30.0)), step=1.0, key="sim_event_duration_min"))
         cfg["event_multiplier"] = float(st.number_input("event_multiplier", min_value=1.0, value=float(cfg.get("event_multiplier", 1.2)), step=0.1, key="sim_event_multiplier"))
+        cfg["forward_bias"] = float(st.slider("forward_bias", 0.0, 5.0, float(cfg.get("forward_bias", 1.0)), 0.05, key="sim_forward_bias"))
         cfg["pixels_per_10m"] = float(st.number_input("pixels_per_10m", min_value=10.0, max_value=3000.0, value=float(cfg.get("pixels_per_10m", 150.0)), step=1.0, key="sim_pixels_per_10m"))
 
     if st.button("Run dual simulation", key="sim_run_btn"):
