@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import time
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +51,73 @@ def _draw_preview(layout: dict[str, Any]) -> Image.Image:
             draw.polygon([(x, y - 14), (x - 12, y + 10), (x + 12, y + 10)], outline="yellow", width=2)
 
     return img
+
+
+def _nearest_node_id(layout: dict[str, Any], x: int, y: int, radius: int = 20) -> int | None:
+    best_id = None
+    best_d2 = radius * radius
+    for n in layout.get("nodes", []):
+        dx = int(n["x"]) - x
+        dy = int(n["y"]) - y
+        d2 = dx * dx + dy * dy
+        if d2 <= best_d2:
+            best_d2 = d2
+            best_id = int(n["id"])
+    return best_id
+
+
+def _handle_click_auto_add(layout: dict[str, Any], click: dict[str, Any] | None) -> None:
+    if not click:
+        return
+    now = time.time()
+    x, y = int(click["x"]), int(click["y"])
+    click_sig = f"{x}:{y}"
+    last_sig = st.session_state.get("builder_auto_last_sig")
+    last_ts = float(st.session_state.get("builder_auto_last_ts", 0.0))
+    cooldown_ok = (now - last_ts) >= 0.1
+    if click_sig == last_sig:
+        return
+    if not cooldown_ok:
+        return
+
+    nid = 1 + max([n["id"] for n in layout.get("nodes", [])], default=0)
+    layout["nodes"].append({"id": nid, "x": x, "y": y})
+    st.session_state.builder_auto_last_sig = click_sig
+    st.session_state.builder_auto_last_ts = now
+
+
+def _handle_click_connect(layout: dict[str, Any], click: dict[str, Any] | None, make_main: bool) -> str | None:
+    if not click:
+        return None
+    x, y = int(click["x"]), int(click["y"])
+    click_sig = f"{x}:{y}"
+    if st.session_state.get("builder_connect_last_sig") == click_sig:
+        return None
+    st.session_state.builder_connect_last_sig = click_sig
+
+    nid = _nearest_node_id(layout, x, y)
+    if nid is None:
+        return "No node near click. Click closer to a node to connect."
+
+    first = st.session_state.get("builder_connect_first_node")
+    if first is None:
+        st.session_state.builder_connect_first_node = nid
+        return f"Selected node {nid}. Click another node to create an edge."
+
+    if first == nid:
+        return f"Node {nid} selected again. Click a different node."
+
+    pair = tuple(sorted((int(first), nid)))
+    existing = next((e for e in layout["edges"] if tuple(sorted((e["source"], e["target"]))) == pair), None)
+    if existing:
+        existing["is_main"] = existing.get("is_main", False) or make_main
+        msg = f"Edge {pair[0]}-{pair[1]} already existed. Updated main={existing['is_main']}."
+    else:
+        layout["edges"].append({"source": pair[0], "target": pair[1], "is_main": bool(make_main)})
+        msg = f"Added edge {pair[0]}-{pair[1]} (main={bool(make_main)})."
+
+    st.session_state.builder_connect_first_node = None
+    return msg
 
 
 def render() -> None:
@@ -106,9 +174,23 @@ def render() -> None:
     st.image(preview, caption="Preview")
 
     st.markdown("### Graph editor")
+    click_mode = st.radio(
+        "Click mode",
+        ["Manual add node", "Auto add node", "Connect nodes"],
+        key="builder_click_mode",
+        horizontal=True,
+    )
+    connect_main = st.checkbox("Connect mode: mark created edges as main", key="builder_connect_main")
     click = streamlit_image_coordinates(preview, key="builder_image_click")
     if click:
         st.caption(f"Last click: x={int(click['x'])}, y={int(click['y'])}")
+
+    if click_mode == "Auto add node":
+        _handle_click_auto_add(layout, click)
+    elif click_mode == "Connect nodes":
+        msg = _handle_click_connect(layout, click, connect_main)
+        if msg:
+            st.info(msg)
 
     if st.button("Add node at last click", key="builder_add_node_btn"):
         if click:
