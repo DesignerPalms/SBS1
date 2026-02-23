@@ -60,6 +60,15 @@ def render() -> None:
     cfg["peak_pct"] = float(st.slider("peak_pct", 0.0, 1.0, float(cfg["peak_pct"]), 0.01, key="sim_peak_pct"))
     cfg["minutes_deviation"] = float(st.number_input("minutes_deviation (+/- minutes, bell curve)", min_value=0.0, max_value=180.0, value=float(cfg.get("minutes_deviation", 30.0)), step=1.0, key="sim_minutes_deviation"))
 
+    with st.expander("Realism controls", expanded=False):
+        cfg["arrival_wave_strength"] = float(st.slider("arrival_wave_strength", 0.0, 1.0, float(cfg.get("arrival_wave_strength", 0.15)), 0.01, key="sim_arrival_wave_strength"))
+        cfg["arrival_wave_frequency"] = float(st.number_input("arrival_wave_frequency", min_value=0.1, max_value=8.0, value=float(cfg.get("arrival_wave_frequency", 2.0)), step=0.1, key="sim_arrival_wave_frequency"))
+        cfg["event_start_min"] = float(st.number_input("event_start_min", min_value=0.0, value=float(cfg.get("event_start_min", 120.0)), step=1.0, key="sim_event_start_min"))
+        cfg["event_duration_min"] = float(st.number_input("event_duration_min", min_value=0.0, value=float(cfg.get("event_duration_min", 30.0)), step=1.0, key="sim_event_duration_min"))
+        cfg["event_multiplier"] = float(st.number_input("event_multiplier", min_value=1.0, value=float(cfg.get("event_multiplier", 1.2)), step=0.1, key="sim_event_multiplier"))
+        cfg["walk_speed_mean"] = float(st.number_input("walk_speed_mean", min_value=10.0, value=float(cfg.get("walk_speed_mean", 110.0)), step=1.0, key="sim_walk_speed_mean"))
+        cfg["walk_speed_std"] = float(st.number_input("walk_speed_std", min_value=0.1, value=float(cfg.get("walk_speed_std", 20.0)), step=0.1, key="sim_walk_speed_std"))
+
     if st.button("Run dual simulation", key="sim_run_btn"):
         peak_att = int(round(total_attendance * cfg["peak_pct"]))
         off_att = max(0, total_attendance - peak_att)
@@ -100,6 +109,11 @@ def render() -> None:
                 }
             )
         st.dataframe(pd.DataFrame(rows))
+
+        queue_rows = [{"node_id": k, "mean_wait_steps": v} for k, v in peak.get("queue_wait_mean", {}).items()]
+        if queue_rows:
+            st.caption("Peak queue wait (mean steps)")
+            st.dataframe(pd.DataFrame(queue_rows))
 
         heat_mode = st.selectbox("Heatmap mode", ["rank_bins", "percentile", "value"], key="sim_heat_mode")
         bins = st.slider("rank bins", 3, 9, 5, key="sim_heat_bins") if heat_mode == "rank_bins" else 5

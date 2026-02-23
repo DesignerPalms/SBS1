@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import math
 import random
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Any
 
@@ -22,8 +23,17 @@ def _build_graph(layout: dict[str, Any]) -> nx.Graph:
         g.add_node(n["id"], x=n["x"], y=n["y"])
     for e in layout.get("edges", []):
         a, b = e["source"], e["target"]
-        g.add_edge(a, b, is_main=bool(e.get("is_main", False)))
+        n1 = next((n for n in layout.get("nodes", []) if n["id"] == a), None)
+        n2 = next((n for n in layout.get("nodes", []) if n["id"] == b), None)
+        length = 1.0
+        if n1 and n2:
+            length = max(1.0, math.hypot(float(n2["x"]) - float(n1["x"]), float(n2["y"]) - float(n1["y"])))
+        g.add_edge(a, b, is_main=bool(e.get("is_main", False)), length=length)
     return g
+
+
+def _edge_key(a: int, b: int) -> tuple[int, int]:
+    return (a, b) if a < b else (b, a)
 
 
 def _weighted_entrance_choice(rng: random.Random, entrances: list[dict[str, Any]]) -> int:
@@ -31,10 +41,19 @@ def _weighted_entrance_choice(rng: random.Random, entrances: list[dict[str, Any]
     return rng.choices([e["node_id"] for e in entrances], weights=weights, k=1)[0]
 
 
-def _pick_personality(rng: random.Random, cfg: dict[str, Any]) -> str:
-    choices = ["wanderer", "mission", "explorer", "main"]
-    w = [cfg["pct_wanderer"], cfg["pct_mission"], cfg["pct_explorer"], cfg["pct_main"]]
-    return rng.choices(choices, weights=w, k=1)[0]
+def _closest_entrance(g: nx.Graph, current: int, entrances: list[dict[str, Any]]) -> int:
+    entrance_nodes = [e["node_id"] for e in entrances]
+    best = entrance_nodes[0]
+    best_dist = float("inf")
+    for n in entrance_nodes:
+        try:
+            d = nx.shortest_path_length(g, current, n, weight="length")
+            if d < best_dist:
+                best_dist = d
+                best = n
+        except nx.NetworkXNoPath:
+            continue
+    return best
 
 
 def _normalize_mix(cfg: dict[str, Any]) -> None:
@@ -43,13 +62,77 @@ def _normalize_mix(cfg: dict[str, Any]) -> None:
     s = sum(vals)
     if s <= 0:
         vals = [0.25, 0.25, 0.25, 0.25]
-        s = 1
+        s = 1.0
     for k, v in zip(keys, vals):
         cfg[k] = v / s
 
 
-def _edge_key(a: int, b: int) -> tuple[int, int]:
-    return (a, b) if a < b else (b, a)
+def _normalize_group_mix(cfg: dict[str, Any]) -> list[float]:
+    probs = [
+        max(0.0, float(cfg.get("group_prob_solo", 0.7))),
+        max(0.0, float(cfg.get("group_prob_couple", 0.2))),
+        max(0.0, float(cfg.get("group_prob_triple", 0.08))),
+        max(0.0, float(cfg.get("group_prob_quad", 0.02))),
+    ]
+    s = sum(probs)
+    if s <= 0:
+        probs = [1.0, 0.0, 0.0, 0.0]
+        s = 1.0
+    return [p / s for p in probs]
+
+
+def _pick_group_size(rng: random.Random, cfg: dict[str, Any]) -> int:
+    probs = _normalize_group_mix(cfg)
+    return rng.choices([1, 2, 3, 4], weights=probs, k=1)[0]
+
+
+def _pick_personality(rng: random.Random, cfg: dict[str, Any]) -> str:
+    choices = ["wanderer", "mission", "explorer", "main"]
+    w = [cfg["pct_wanderer"], cfg["pct_mission"], cfg["pct_explorer"], cfg["pct_main"]]
+    return rng.choices(choices, weights=w, k=1)[0]
+
+
+def _mission_target(rng: random.Random, attractors: list[dict[str, Any]], booths: list[dict[str, Any]]) -> int | None:
+    if attractors:
+        weights = [max(0.01, float(a.get("strength", 1.0))) for a in attractors]
+        return rng.choices([a["node_id"] for a in attractors], weights=weights, k=1)[0]
+    if booths:
+        return rng.choice([b["node_id"] for b in booths])
+    return None
+
+
+def _sample_wander_minutes(rng: random.Random, avg_minutes: float, deviation_minutes: float) -> float:
+    dev = max(0.0, float(deviation_minutes))
+    if dev <= 0:
+        return max(1.0, avg_minutes)
+    sigma = max(0.1, dev / 3.0)
+    delta = max(-dev, min(dev, rng.gauss(0.0, sigma)))
+    return max(1.0, avg_minutes + delta)
+
+
+def _sample_walk_speed(rng: random.Random, cfg: dict[str, Any]) -> float:
+    mean = max(1.0, float(cfg.get("walk_speed_mean", 110.0)))
+    std = max(0.1, float(cfg.get("walk_speed_std", 20.0)))
+    return max(10.0, rng.gauss(mean, std))
+
+
+def _arrival_weights(total_steps: int, cfg: dict[str, Any]) -> list[float]:
+    weights = []
+    wave_strength = max(0.0, float(cfg.get("arrival_wave_strength", 0.15)))
+    wave_freq = max(0.1, float(cfg.get("arrival_wave_frequency", 2.0)))
+
+    event_start = int(max(0, float(cfg.get("event_start_min", 120.0))))
+    event_dur = int(max(0, float(cfg.get("event_duration_min", 30.0))))
+    event_mult = max(1.0, float(cfg.get("event_multiplier", 1.2)))
+
+    for step in range(total_steps):
+        t = step / max(1, total_steps - 1)
+        wave = 1.0 + wave_strength * math.sin(2.0 * math.pi * wave_freq * t)
+        mult = wave
+        if event_start <= step <= (event_start + event_dur):
+            mult *= event_mult
+        weights.append(max(0.01, mult))
+    return weights
 
 
 def _choose_next_neighbor(
@@ -61,28 +144,41 @@ def _choose_next_neighbor(
     cfg: dict[str, Any],
     personality: str,
     goal_node: int | None,
+    recent_edges: deque[tuple[int, int]],
+    seen_nodes: dict[int, int],
 ) -> int | None:
     neighbors = list(g.neighbors(current))
     if not neighbors:
         return None
 
     scores: list[float] = []
+    repeat_penalty = max(0.01, float(cfg.get("repeat_edge_penalty", 0.75)))
+    novelty_bonus_initial = max(0.0, float(cfg.get("novelty_bonus_initial", 0.4)))
+    novelty_decay = max(0.0, float(cfg.get("novelty_decay_rate", 0.35)))
+
     for nb in neighbors:
         score = 1.0
         if prev is not None and nb == prev:
             score *= max(0.01, 1.0 - float(cfg["turnback_rate"]))
 
-        e = g.edges[current, nb]
-        if personality == "main" and e.get("is_main"):
+        edge = g.edges[current, nb]
+        if personality == "main" and edge.get("is_main"):
             score *= float(cfg["main_loyal_multiplier"])
 
         flow = edge_flow[_edge_key(current, nb)]
         score *= 1.0 / (1.0 + float(cfg["congestion_alpha"]) * flow)
 
+        ek = _edge_key(current, nb)
+        if ek in recent_edges:
+            score *= repeat_penalty
+
+        visits = seen_nodes.get(nb, 0)
+        score *= 1.0 + (novelty_bonus_initial * math.exp(-novelty_decay * visits))
+
         if goal_node is not None:
             try:
-                d_cur = nx.shortest_path_length(g, current, goal_node)
-                d_nb = nx.shortest_path_length(g, nb, goal_node)
+                d_cur = nx.shortest_path_length(g, current, goal_node, weight="length")
+                d_nb = nx.shortest_path_length(g, nb, goal_node, weight="length")
                 if d_nb < d_cur:
                     score *= float(cfg["goal_bias"])
             except nx.NetworkXNoPath:
@@ -92,60 +188,31 @@ def _choose_next_neighbor(
     return rng.choices(neighbors, weights=scores, k=1)[0]
 
 
+def _service_node(
+    node_id: int,
+    now_step: int,
+    service_state: dict[int, list[int]],
+    capacity: int,
+    service_time_steps: int,
+    max_wait: int,
+) -> tuple[int, int]:
+    slots = service_state.setdefault(node_id, [])
+    slots[:] = [t for t in slots if t > now_step]
 
+    if len(slots) < capacity:
+        end_step = now_step + service_time_steps
+        slots.append(end_step)
+        return now_step, 0
 
-def _sample_wander_steps(rng: random.Random, avg_minutes: float, steps_per_min: int, deviation_minutes: float) -> int:
-    dev = max(0.0, float(deviation_minutes))
-    if dev <= 0.0:
-        minutes = max(1.0, float(avg_minutes))
-    else:
-        # bell-curve variation: +/-dev bounds, with extremes unlikely
-        sigma = max(0.1, dev / 3.0)
-        delta = rng.gauss(0.0, sigma)
-        delta = max(-dev, min(dev, delta))
-        minutes = max(1.0, float(avg_minutes) + delta)
-    return max(1, int(round(minutes * steps_per_min)))
+    soonest = min(slots)
+    wait = max(0, soonest - now_step)
+    if wait > max_wait:
+        return now_step, wait
 
-
-def _closest_entrance(g: nx.Graph, current: int, entrances: list[dict[str, Any]]) -> int:
-    entrance_nodes = [e["node_id"] for e in entrances]
-    best = entrance_nodes[0]
-    best_dist = float("inf")
-    for n in entrance_nodes:
-        try:
-            d = nx.shortest_path_length(g, current, n)
-            if d < best_dist:
-                best_dist = d
-                best = n
-        except nx.NetworkXNoPath:
-            continue
-    return best
-
-def _mission_target(rng: random.Random, attractors: list[dict[str, Any]], booths: list[dict[str, Any]]) -> int | None:
-    if attractors:
-        weights = [max(0.01, float(a.get("strength", 1.0))) for a in attractors]
-        return rng.choices([a["node_id"] for a in attractors], weights=weights, k=1)[0]
-    if booths:
-        return rng.choice([b["node_id"] for b in booths])
-    return None
-
-
-def _apply_path(
-    person_scale: int,
-    path: list[int],
-    node_visits: dict[int, float],
-    edge_visits: dict[tuple[int, int], float],
-    booth_nodes: set[int],
-    booth_person_counts: dict[int, int],
-) -> None:
-    for n in path:
-        node_visits[n] += person_scale
-        if n in booth_nodes:
-            seen = booth_person_counts[n]
-            booth_person_counts[n] += 1
-            booth_person_counts[n] += 0  # explicit, no-op for readability
-    for a, b in zip(path, path[1:]):
-        edge_visits[_edge_key(a, b)] += person_scale
+    slots.remove(soonest)
+    start = soonest
+    slots.append(start + service_time_steps)
+    return start, wait
 
 
 def run_simulation(
@@ -171,10 +238,16 @@ def run_simulation(
     avg_hours_on_floor = max(0.01, segment.avg_minutes_on_floor / 60.0)
     concurrent_people = max(1, round(arrivals_per_hour * avg_hours_on_floor))
 
+    total_steps = max(60, int(seg_hours * 60.0 * steps_per_min))
     booth_nodes = {b["node_id"]: b.get("label", f"booth-{b['node_id']}") for b in booths}
+    attractor_map = {a["node_id"]: a for a in attractors}
+
     booth_scores_per_sim: dict[int, list[float]] = defaultdict(list)
     node_sums: dict[int, float] = defaultdict(float)
     edge_sums: dict[tuple[int, int], float] = defaultdict(float)
+
+    queue_wait_totals: dict[int, float] = defaultdict(float)
+    queue_wait_counts: dict[int, int] = defaultdict(int)
 
     for s in range(sims):
         rng = random.Random(int(cfg["seed"]) + s)
@@ -182,80 +255,121 @@ def run_simulation(
         edge_visits: dict[tuple[int, int], float] = defaultdict(float)
         booth_score: dict[int, float] = defaultdict(float)
 
-        people_done = 0
-        while people_done < concurrent_people:
-            group = 2 if rng.random() < min(1.0, max(0.0, float(cfg["couples_rate"]))) else 1
-            people_done += group
+        service_state: dict[int, list[int]] = {}
+        arrival_w = _arrival_weights(total_steps, cfg)
 
+        people_done = 0
+        groups: list[tuple[int, int]] = []
+        while people_done < concurrent_people:
+            gsize = _pick_group_size(rng, cfg)
+            people_done += gsize
+            spawn_step = rng.choices(range(total_steps), weights=arrival_w, k=1)[0]
+            groups.append((spawn_step, gsize))
+        groups.sort(key=lambda x: x[0])
+
+        for spawn_step, group in groups:
             start = _weighted_entrance_choice(rng, entrances)
             personality = _pick_personality(rng, cfg)
-            goal_node: int | None = None
-            if personality == "mission":
-                goal_node = _mission_target(rng, attractors, booths)
+            goal_node: int | None = _mission_target(rng, attractors, booths) if personality == "mission" else None
+
+            wander_minutes = _sample_wander_minutes(rng, segment.avg_minutes_on_floor, float(cfg.get("minutes_deviation", 30.0)))
+            walk_speed = _sample_walk_speed(rng, cfg)
+            distance_budget = wander_minutes * walk_speed
+            if personality in ("mission", "main"):
+                distance_budget *= max(0.5, float(cfg.get("group_cohesion", 0.9)))
 
             path = [start]
             prev = None
             cur = start
-            attractor_cooldown = 0
+            traveled = 0.0
+            now = spawn_step
             booth_hits_for_person: dict[int, int] = defaultdict(int)
+            recent_edges: deque[tuple[int, int]] = deque(maxlen=max(1, int(cfg.get("memory_window_steps", 8))))
+            seen_nodes: dict[int, int] = defaultdict(int)
+            seen_nodes[cur] += 1
 
             if personality == "mission" and goal_node in g:
                 try:
-                    mission_path = nx.shortest_path(g, cur, goal_node)
+                    mission_path = nx.shortest_path(g, cur, goal_node, weight="length")
                     for n in mission_path[1:]:
-                        path.append(n)
-                    cur = path[-1]
+                        e_len = float(g.edges[cur, n].get("length", 1.0))
+                        traveled += e_len
+                        now += 1
+                        edge_visits[_edge_key(cur, n)] += group
+                        recent_edges.append(_edge_key(cur, n))
+                        cur = n
+                        path.append(cur)
+                        seen_nodes[cur] += 1
                     prev = path[-2] if len(path) > 1 else None
                 except nx.NetworkXNoPath:
                     pass
 
-            wander_steps = _sample_wander_steps(
-                rng,
-                segment.avg_minutes_on_floor,
-                steps_per_min,
-                float(cfg.get("minutes_deviation", 30.0)),
-            )
-
-            for _ in range(wander_steps):
-                # dwell behavior
-                hit_attractor = next((a for a in attractors if a["node_id"] == cur), None)
-                if hit_attractor and attractor_cooldown <= 0:
-                    dwell = max(1, int(hit_attractor.get("dwell_steps", 1)))
-                    if len(path) > 1:
-                        approach = _edge_key(path[-2], path[-1])
-                    else:
-                        approach = None
-                    for _d in range(dwell):
+            while traveled < distance_budget:
+                # queue/service at booth/attractor nodes
+                if cur in attractor_map:
+                    attr = attractor_map[cur]
+                    cap = max(1, int(cfg.get("attractor_capacity", 2)))
+                    svc = max(1, int(attr.get("dwell_steps", 3)))
+                    max_wait = max(0, int(cfg.get("max_queue_wait_steps", 20)))
+                    service_start, wait = _service_node(cur, now, service_state, cap, svc, max_wait)
+                    if wait > 0:
+                        queue_wait_totals[cur] += wait * group
+                        queue_wait_counts[cur] += group
+                        for _ in range(wait):
+                            path.append(cur)
+                            node_visits[cur] += group
+                        now = service_start
+                    for _ in range(svc):
                         path.append(cur)
-                        if approach:
+                        node_visits[cur] += group
+                        now += 1
+                        if len(path) > 2:
+                            approach = _edge_key(path[-3], path[-2])
                             edge_visits[approach] += group
-                    attractor_cooldown = int(cfg["attractor_cooldown_steps"])
 
-                if attractor_cooldown > 0:
-                    attractor_cooldown -= 1
+                if cur in booth_nodes:
+                    cap = max(1, int(cfg.get("booth_capacity", 2)))
+                    svc = max(1, int(cfg.get("booth_service_steps", 1)))
+                    max_wait = max(0, int(cfg.get("max_queue_wait_steps", 20)))
+                    service_start, wait = _service_node(cur, now, service_state, cap, svc, max_wait)
+                    if wait > 0:
+                        queue_wait_totals[cur] += wait * group
+                        queue_wait_counts[cur] += group
+                        now = service_start
 
-                next_node = _choose_next_neighbor(rng, g, cur, prev, edge_visits, cfg, personality, goal_node)
-                if next_node is None:
+                nxt = _choose_next_neighbor(rng, g, cur, prev, edge_visits, cfg, personality, goal_node, recent_edges, seen_nodes)
+                if nxt is None:
                     break
-                prev, cur = cur, next_node
+                edge_len = float(g.edges[cur, nxt].get("length", 1.0))
+                if traveled + edge_len > distance_budget:
+                    break
+                traveled += edge_len
+                now += 1
+                prev, cur = cur, nxt
                 path.append(cur)
+                ek = _edge_key(path[-2], path[-1])
+                edge_visits[ek] += group
+                recent_edges.append(ek)
+                seen_nodes[cur] += 1
 
+            # after budget, exit directly to nearest entrance
             exit_target = _closest_entrance(g, cur, entrances)
             try:
-                exit_path = nx.shortest_path(g, cur, exit_target)
-                path.extend(exit_path[1:])
+                exit_path = nx.shortest_path(g, cur, exit_target, weight="length")
+                for n in exit_path[1:]:
+                    now += 1
+                    edge_visits[_edge_key(cur, n)] += group
+                    cur = n
+                    path.append(cur)
             except nx.NetworkXNoPath:
                 pass
 
-            # scoring and flow
             for n in path:
                 node_visits[n] += group
                 if n in booth_nodes:
                     seen = booth_hits_for_person[n]
                     booth_score[n] += (0.5**seen) * group
                     booth_hits_for_person[n] += 1
-            for a, b in zip(path, path[1:]):
-                edge_visits[_edge_key(a, b)] += group
 
         for n, v in node_visits.items():
             node_sums[n] += v
@@ -279,10 +393,12 @@ def run_simulation(
 
     node_mean = {str(k): v / sims for k, v in node_sums.items()}
     edge_mean = {f"{a}-{b}": v / sims for (a, b), v in edge_sums.items()}
+    queue_wait_mean = {str(k): (queue_wait_totals[k] / max(1, queue_wait_counts[k])) / sims for k in queue_wait_totals.keys()}
 
     return {
         "booth_summary": booth_summary,
         "node_visit_mean": node_mean,
         "edge_visit_mean": edge_mean,
+        "queue_wait_mean": queue_wait_mean,
         "concurrent_people": concurrent_people,
     }
