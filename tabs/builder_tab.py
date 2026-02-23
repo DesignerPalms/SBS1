@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 import streamlit as st
 from PIL import Image, ImageDraw
-from streamlit_drawable_canvas import st_canvas
+from streamlit_image_coordinates import streamlit_image_coordinates
 
 from graph_io import IMAGE_DIR, delete_layout, list_layouts, load_layout, new_layout_template, save_layout, slugify
 
@@ -107,23 +106,16 @@ def render() -> None:
     st.image(preview, caption="Preview")
 
     st.markdown("### Graph editor")
-    canvas_result = st_canvas(
-        stroke_width=3,
-        stroke_color="#111111",
-        background_image=preview,
-        update_streamlit=True,
-        height=preview.height,
-        width=preview.width,
-        drawing_mode="point",
-        key="builder_canvas",
-    )
+    click = streamlit_image_coordinates(preview, key="builder_image_click")
+    if click:
+        st.caption(f"Last click: x={int(click['x'])}, y={int(click['y'])}")
 
-    if st.button("Add node from latest canvas point", key="builder_add_node_btn"):
-        objects = (canvas_result.json_data or {}).get("objects", []) if canvas_result else []
-        if objects:
-            obj = objects[-1]
+    if st.button("Add node at last click", key="builder_add_node_btn"):
+        if click:
             nid = 1 + max([n["id"] for n in layout.get("nodes", [])], default=0)
-            layout["nodes"].append({"id": nid, "x": int(obj["left"]), "y": int(obj["top"])})
+            layout["nodes"].append({"id": nid, "x": int(click["x"]), "y": int(click["y"])})
+        else:
+            st.warning("Click the preview image first to place a node.")
 
     node_ids = [n["id"] for n in layout.get("nodes", [])]
     if node_ids:
