@@ -56,6 +56,7 @@ def render() -> None:
 
     total_attendance = int(st.number_input("total_attendance", min_value=1, value=10000, key="sim_total_attendance"))
     total_show_hours = float(st.number_input("total_show_hours", min_value=0.1, value=8.0, step=0.1, key="sim_total_hours"))
+    total_show_days = int(st.number_input("total_show_days", min_value=1, value=1, step=1, key="sim_total_days"))
     avg_minutes = float(st.number_input("avg_minutes_on_floor", min_value=1.0, value=90.0, step=1.0, key="sim_avg_minutes"))
 
     cfg["peak_hours"] = float(st.number_input("peak_hours", min_value=0.0, max_value=total_show_hours, value=float(cfg["peak_hours"]), step=0.1, key="sim_peak_hours"))
@@ -66,7 +67,9 @@ def render() -> None:
         cfg["arrival_wave_strength"] = float(st.slider("arrival_wave_strength", 0.0, 1.0, float(cfg.get("arrival_wave_strength", 0.15)), 0.01, key="sim_arrival_wave_strength"))
         cfg["arrival_wave_frequency"] = float(st.number_input("arrival_wave_frequency", min_value=0.1, max_value=8.0, value=float(cfg.get("arrival_wave_frequency", 2.0)), step=0.1, key="sim_arrival_wave_frequency"))
         cfg["event_start_min"] = float(st.number_input("event_start_min", min_value=0.0, value=float(cfg.get("event_start_min", 120.0)), step=1.0, key="sim_event_start_min"))
-        cfg["event_duration_min"] = float(st.number_input("event_duration_min", min_value=0.0, value=float(cfg.get("event_duration_min", 30.0)), step=1.0, key="sim_event_duration_min"))
+        cfg["event_duration_min"] = float(st.number_input("event_duration_min", min_value=0.0, value=float(cfg.get("event_duration_min", 45.0)), step=1.0, key="sim_event_duration_min"))
+        cfg["show_day_hours"] = float(st.number_input("show_day_hours", min_value=0.5, max_value=24.0, value=float(cfg.get("show_day_hours", 8.0)), step=0.5, key="sim_show_day_hours"))
+        cfg["main_event_days"] = int(st.number_input("main_event_days", min_value=0, max_value=60, value=int(cfg.get("main_event_days", 1)), step=1, key="sim_main_event_days"))
         cfg["event_multiplier"] = float(st.number_input("event_multiplier", min_value=1.0, value=float(cfg.get("event_multiplier", 1.2)), step=0.1, key="sim_event_multiplier"))
         cfg["main_event_pull_chance"] = float(st.slider("main_event_pull_chance", 0.0, 1.0, float(cfg.get("main_event_pull_chance", 0.35)), 0.01, key="sim_main_event_pull_chance"))
         cfg["main_event_strength_multiplier"] = float(st.number_input("main_event_strength_multiplier", min_value=1.0, max_value=50.0, value=float(cfg.get("main_event_strength_multiplier", 4.0)), step=0.1, key="sim_main_event_strength_multiplier"))
@@ -74,6 +77,8 @@ def render() -> None:
         cfg["pixels_per_10m"] = float(st.number_input("pixels_per_10m", min_value=10.0, max_value=3000.0, value=float(cfg.get("pixels_per_10m", 150.0)), step=1.0, key="sim_pixels_per_10m"))
 
     if st.button("Run dual simulation", key="sim_run_btn"):
+        cfg["show_day_hours"] = min(24.0, max(0.5, float(cfg.get("show_day_hours", 8.0))))
+        cfg["main_event_days"] = min(int(total_show_days), max(0, int(cfg.get("main_event_days", 1))))
         peak_att = int(round(total_attendance * cfg["peak_pct"]))
         off_att = max(0, total_attendance - peak_att)
         off_hours = max(0.1, total_show_hours - cfg["peak_hours"])
@@ -197,6 +202,7 @@ def render() -> None:
                 "total_attendance": total_attendance,
                 "total_show_hours": total_show_hours,
                 "avg_minutes_on_floor": avg_minutes,
+                "total_show_days": total_show_days,
                 "peak_hours": cfg["peak_hours"],
                 "peak_pct": cfg["peak_pct"],
             },

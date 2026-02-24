@@ -122,29 +122,36 @@ def _sample_walk_speed(rng: random.Random, cfg: dict[str, Any]) -> float:
     return sampled_m_per_min * px_per_m
 
 
-def _arrival_weights(total_steps: int, cfg: dict[str, Any]) -> list[float]:
+def _arrival_weights(total_steps: int, cfg: dict[str, Any], steps_per_min: int) -> list[float]:
     weights = []
     wave_strength = max(0.0, float(cfg.get("arrival_wave_strength", 0.15)))
     wave_freq = max(0.1, float(cfg.get("arrival_wave_frequency", 2.0)))
 
-    event_start = int(max(0, float(cfg.get("event_start_min", 120.0))))
-    event_dur = int(max(0, float(cfg.get("event_duration_min", 30.0))))
     event_mult = max(1.0, float(cfg.get("event_multiplier", 1.2)))
 
     for step in range(total_steps):
         t = step / max(1, total_steps - 1)
         wave = 1.0 + wave_strength * math.sin(2.0 * math.pi * wave_freq * t)
         mult = wave
-        if event_start <= step <= (event_start + event_dur):
+        if _is_event_active(step, cfg, steps_per_min):
             mult *= event_mult
         weights.append(max(0.01, mult))
     return weights
 
 
 def _is_event_active(step: int, cfg: dict[str, Any], steps_per_min: int) -> bool:
+    day_hours = max(0.25, float(cfg.get("show_day_hours", 8.0)))
+    day_len_steps = max(1, int(day_hours * 60.0 * steps_per_min))
+    day_idx = int(step // day_len_steps)
+
+    active_days = max(0, int(cfg.get("main_event_days", 1)))
+    if day_idx >= active_days:
+        return False
+
+    step_in_day = int(step % day_len_steps)
     start = int(max(0.0, float(cfg.get("event_start_min", 120.0))) * steps_per_min)
     duration = int(max(0.0, float(cfg.get("event_duration_min", 30.0))) * steps_per_min)
-    return start <= step <= (start + duration)
+    return start <= step_in_day <= (start + duration)
 
 
 def _active_main_event_node(attractors: list[dict[str, Any]], step: int, cfg: dict[str, Any], steps_per_min: int, rng: random.Random) -> int | None:
@@ -305,7 +312,7 @@ def run_simulation(
         booth_score: dict[int, float] = defaultdict(float)
 
         service_state: dict[int, list[int]] = {}
-        arrival_w = _arrival_weights(total_steps, cfg)
+        arrival_w = _arrival_weights(total_steps, cfg, steps_per_min)
 
         people_done = 0
         groups: list[tuple[int, int]] = []
