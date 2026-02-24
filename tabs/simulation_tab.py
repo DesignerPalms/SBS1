@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -10,6 +11,7 @@ from builder.heatmap import draw_heatmap_overlay
 from defaults_store import default_preset_template, list_presets, load_preset
 from graph_io import IMAGE_DIR, list_layouts, load_layout
 from sim import SegmentConfig, run_simulation
+from sim_store import SIM_IMAGES_DIR, save_sim_run
 
 
 def _sim_state_from_preset(preset: dict) -> None:
@@ -110,7 +112,8 @@ def render() -> None:
                     "off_std_score": off["booth_summary"].get(b, {}).get("std_score", 0.0),
                 }
             )
-        st.dataframe(pd.DataFrame(rows))
+        summary_df = pd.DataFrame(rows)
+        st.dataframe(summary_df)
 
         heat_mode = st.selectbox("Heatmap mode", ["rank_bins", "percentile", "value"], key="sim_heat_mode")
         bins = st.slider("rank bins", 3, 9, 5, key="sim_heat_bins") if heat_mode == "rank_bins" else 5
@@ -149,41 +152,85 @@ def render() -> None:
 
         queue_rows = [{"node_id": k, "mean_wait_steps": v} for k, v in peak.get("queue_wait_mean", {}).items()]
         st.caption("Peak queue wait (mean steps)")
-        if queue_rows:
-            st.dataframe(pd.DataFrame(queue_rows))
-        else:
-            st.info("No queue-wait data for this run.")
+        st.dataframe(pd.DataFrame(queue_rows)) if queue_rows else st.info("No queue-wait data for this run.")
 
         debug_peak = []
         for nid, info in peak.get("attractor_debug", {}).items():
-            debug_peak.append({
-                "node_id": nid,
-                "label": info.get("label"),
-                "is_main_event": info.get("is_main_event"),
-                "event_active_checks_mean": info.get("event_active_checks_mean", 0.0),
-                "event_pull_assignments_mean": info.get("event_pull_assignments_mean", 0.0),
-                "event_pull_conversion": info.get("event_pull_conversion", 0.0),
-                "dwell_people_steps_mean": info.get("dwell_people_steps_mean", 0.0),
-            })
+            debug_peak.append(
+                {
+                    "node_id": nid,
+                    "label": info.get("label"),
+                    "is_main_event": info.get("is_main_event"),
+                    "event_active_checks_mean": info.get("event_active_checks_mean", 0.0),
+                    "event_pull_assignments_mean": info.get("event_pull_assignments_mean", 0.0),
+                    "event_pull_conversion": info.get("event_pull_conversion", 0.0),
+                    "dwell_people_steps_mean": info.get("dwell_people_steps_mean", 0.0),
+                }
+            )
         st.caption("Peak attractor debug")
-        if debug_peak:
-            st.dataframe(pd.DataFrame(debug_peak))
-        else:
-            st.info("No attractor debug rows for peak segment.")
+        st.dataframe(pd.DataFrame(debug_peak)) if debug_peak else st.info("No attractor debug rows for peak segment.")
 
         debug_off = []
         for nid, info in off.get("attractor_debug", {}).items():
-            debug_off.append({
-                "node_id": nid,
-                "label": info.get("label"),
-                "is_main_event": info.get("is_main_event"),
-                "event_active_checks_mean": info.get("event_active_checks_mean", 0.0),
-                "event_pull_assignments_mean": info.get("event_pull_assignments_mean", 0.0),
-                "event_pull_conversion": info.get("event_pull_conversion", 0.0),
-                "dwell_people_steps_mean": info.get("dwell_people_steps_mean", 0.0),
-            })
+            debug_off.append(
+                {
+                    "node_id": nid,
+                    "label": info.get("label"),
+                    "is_main_event": info.get("is_main_event"),
+                    "event_active_checks_mean": info.get("event_active_checks_mean", 0.0),
+                    "event_pull_assignments_mean": info.get("event_pull_assignments_mean", 0.0),
+                    "event_pull_conversion": info.get("event_pull_conversion", 0.0),
+                    "dwell_people_steps_mean": info.get("dwell_people_steps_mean", 0.0),
+                }
+            )
         st.caption("Off-peak attractor debug")
-        if debug_off:
-            st.dataframe(pd.DataFrame(debug_off))
+        st.dataframe(pd.DataFrame(debug_off)) if debug_off else st.info("No attractor debug rows for off-peak segment.")
+
+        # cache latest run for save/load
+        st.session_state.sim_last_results = {
+            "meta": {
+                "layout_id": layout_id,
+                "preset_choice": preset_choice,
+                "saved_name_default": f"{layout_id}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+            },
+            "inputs": {
+                "total_attendance": total_attendance,
+                "total_show_hours": total_show_hours,
+                "avg_minutes_on_floor": avg_minutes,
+                "peak_hours": cfg["peak_hours"],
+                "peak_pct": cfg["peak_pct"],
+            },
+            "cfg": cfg,
+            "summary_rows": rows,
+            "peak": peak,
+            "off": off,
+            "artifacts": {
+                "peak_img": peak_img,
+                "off_img": off_img,
+            },
+        }
+
+    # Bottom save section
+    st.markdown("---")
+    st.markdown("### Save current simulation")
+    default_name = st.session_state.get("sim_last_results", {}).get("meta", {}).get("saved_name_default", "sim-run")
+    save_name = st.text_input("Save sim name", value=default_name, key="sim_save_name")
+    if st.button("Save sim", key="sim_save_btn"):
+        if "sim_last_results" not in st.session_state:
+            st.warning("Run a simulation first, then save it.")
         else:
-            st.info("No attractor debug rows for off-peak segment.")
+            payload = dict(st.session_state.sim_last_results)
+            run_id = save_sim_run(save_name, {k: v for k, v in payload.items() if k != "artifacts"})
+            SIM_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+            peak_file = f"{run_id}-peak.png"
+            off_file = f"{run_id}-off.png"
+            payload["artifacts"]["peak_img"].save(SIM_IMAGES_DIR / peak_file)
+            payload["artifacts"]["off_img"].save(SIM_IMAGES_DIR / off_file)
+
+            run_payload = {k: v for k, v in payload.items() if k != "artifacts"}
+            run_payload["artifacts"] = {
+                "peak_heatmap_image": peak_file,
+                "off_heatmap_image": off_file,
+            }
+            save_sim_run(save_name, run_payload)
+            st.success(f"Saved simulation: {run_id}")
