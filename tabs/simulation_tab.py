@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from time import perf_counter
 
 import pandas as pd
 import streamlit as st
@@ -26,6 +27,16 @@ def _sim_cfg() -> dict:
         cfg[k] = st.session_state.get(f"sim_{k}", v)
     return cfg
 
+
+
+
+def _fmt_duration(seconds: float) -> str:
+    sec = max(0, int(round(seconds)))
+    mins, s = divmod(sec, 60)
+    hrs, mins = divmod(mins, 60)
+    if hrs > 0:
+        return f"{hrs:d}:{mins:02d}:{s:02d}"
+    return f"{mins:02d}:{s:02d}"
 
 def _segment_impressions(sim_result: dict, attendance: int) -> dict[str, float]:
     c = max(1, int(sim_result.get("concurrent_people", 1)))
@@ -85,15 +96,22 @@ def render() -> None:
 
         progress = st.progress(0)
         status = st.empty()
+        started_at = perf_counter()
 
         def cb(pct: float, txt: str) -> None:
-            progress.progress(int(pct * 100))
-            status.text(txt)
+            clamped_pct = max(0.0, min(1.0, float(pct)))
+            progress.progress(int(clamped_pct * 100))
+            elapsed_s = perf_counter() - started_at
+            if clamped_pct > 0.0:
+                eta_s = max(0.0, (elapsed_s / clamped_pct) - elapsed_s)
+                status.text(f"{txt} | Elapsed: {_fmt_duration(elapsed_s)} | ETA: {_fmt_duration(eta_s)}")
+            else:
+                status.text(f"{txt} | Elapsed: {_fmt_duration(elapsed_s)} | ETA: --:--")
 
         peak = run_simulation(layout, cfg, SegmentConfig(peak_att, cfg["peak_hours"] or 0.1, avg_minutes), progress_cb=cb, progress_offset=0.0, progress_span=0.5)
         off = run_simulation(layout, cfg, SegmentConfig(off_att, off_hours, avg_minutes), progress_cb=cb, progress_offset=0.5, progress_span=0.5)
         progress.progress(100)
-        status.text("Done")
+        status.text(f"Done | Total runtime: {_fmt_duration(perf_counter() - started_at)}")
 
         peak_imp = _segment_impressions(peak, peak_att)
         off_imp = _segment_impressions(off, off_att)
