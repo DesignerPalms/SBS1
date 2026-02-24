@@ -17,12 +17,7 @@ def render() -> None:
         return
 
     run_id = st.selectbox("Saved simulation", runs, key="saved_sims_select")
-    try:
-        run = load_sim_run(run_id)
-    except Exception as e:
-        st.error(f"Could not load saved sim JSON: {e}")
-        st.info("This often means the saved response was empty or malformed JSON. Re-save the run after a successful simulation.")
-        return
+    run = load_sim_run(run_id)
 
     c1, c2 = st.columns(2)
     with c1:

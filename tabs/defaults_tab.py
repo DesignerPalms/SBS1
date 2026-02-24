@@ -143,11 +143,7 @@ def render() -> None:
     c1, c2, c3 = st.columns(3)
     with c1:
         if st.button("Load selected", key="defaults_load_btn") and selected != "(new)":
-            try:
-                st.session_state.defaults_working = load_preset(selected)
-            except Exception as e:
-                st.error(f"Could not load preset JSON: {e}")
-                st.info("If this preset was generated externally, allow a broader response and ensure valid JSON object output.")
+            st.session_state.defaults_working = load_preset(selected)
     with c2:
         if st.button("Reset to template", key="defaults_reset_btn"):
             st.session_state.defaults_working = default_preset_template()

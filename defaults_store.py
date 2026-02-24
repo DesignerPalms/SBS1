@@ -19,19 +19,6 @@ def slugify(value: str) -> str:
     return value.strip("-") or "preset"
 
 
-def _read_json_file(path: Path, label: str) -> dict[str, Any]:
-    raw = path.read_text(encoding="utf-8").strip()
-    if not raw:
-        raise ValueError(f"{label} is empty (empty response).")
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"{label} has invalid JSON: {e.msg} at line {e.lineno}, col {e.colno}.") from e
-    if not isinstance(data, dict):
-        raise ValueError(f"{label} must be a JSON object.")
-    return data
-
-
 def default_preset_template() -> dict[str, Any]:
     return {
         "sims": 80,
@@ -94,7 +81,7 @@ def load_preset(preset_id: str) -> dict[str, Any]:
     path = PRESET_DIR / f"{preset_id}.json"
     if not path.exists():
         raise FileNotFoundError(f"Preset not found: {preset_id}")
-    return _read_json_file(path, f"Preset '{preset_id}'")
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def save_preset(name: str, payload: dict[str, Any]) -> str:

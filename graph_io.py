@@ -23,19 +23,6 @@ def slugify(value: str) -> str:
     return value.strip("-") or "layout"
 
 
-def _read_json_file(path: Path, label: str) -> dict[str, Any]:
-    raw = path.read_text(encoding="utf-8").strip()
-    if not raw:
-        raise ValueError(f"{label} is empty (empty response).")
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"{label} has invalid JSON: {e.msg} at line {e.lineno}, col {e.colno}.") from e
-    if not isinstance(data, dict):
-        raise ValueError(f"{label} must be a JSON object.")
-    return data
-
-
 def new_layout_template(name: str = "Untitled Layout") -> dict[str, Any]:
     return {
         "meta": {
@@ -62,7 +49,7 @@ def load_layout(layout_id: str) -> dict[str, Any]:
     path = LAYOUT_DIR / f"{layout_id}.json"
     if not path.exists():
         raise FileNotFoundError(f"Layout not found: {layout_id}")
-    return _read_json_file(path, f"Layout '{layout_id}'")
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def save_layout(layout: dict[str, Any], layout_id: str | None = None) -> str:

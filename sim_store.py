@@ -22,19 +22,6 @@ def slugify(value: str) -> str:
     return value.strip("-") or "sim-run"
 
 
-def _read_json_file(path: Path, label: str) -> dict[str, Any]:
-    raw = path.read_text(encoding="utf-8").strip()
-    if not raw:
-        raise ValueError(f"{label} is empty (empty response).")
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"{label} has invalid JSON: {e.msg} at line {e.lineno}, col {e.colno}.") from e
-    if not isinstance(data, dict):
-        raise ValueError(f"{label} must be a JSON object.")
-    return data
-
-
 def list_sim_runs() -> list[str]:
     ensure_dirs()
     return sorted([p.stem for p in SIM_RUNS_DIR.glob("*.json")])
@@ -56,7 +43,7 @@ def load_sim_run(run_id: str) -> dict[str, Any]:
     path = SIM_RUNS_DIR / f"{run_id}.json"
     if not path.exists():
         raise FileNotFoundError(f"Sim run not found: {run_id}")
-    return _read_json_file(path, f"Saved sim '{run_id}'")
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def delete_sim_run(run_id: str) -> None:
